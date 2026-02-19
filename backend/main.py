@@ -77,8 +77,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
-    allow_credentials=True,
+    allow_headers=["Content-Type"],
+    allow_credentials=False,
 )
 
 # In-memory session stores (keyed by session_id UUID).
@@ -157,7 +157,6 @@ class DropFeatureRequest(BaseModel):
 
 
 
-# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Endpoints -- Health
 # ---------------------------------------------------------------------------
