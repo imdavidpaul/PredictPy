@@ -50,7 +50,7 @@ function HistCard({ state }: { state: FeatureHistState }) {
 
       {error && !loading && (
         <div className="h-52 flex items-center justify-center px-2">
-          <p className="text-[11px] text-red-400 text-center">{error}</p>
+          <p className="text-[11px] bg-red-500/10 border border-red-500/20 text-red-300 text-center rounded px-2 py-1">{error}</p>
         </div>
       )}
 
@@ -154,17 +154,18 @@ export default function Histogram() {
             )
           )
         })
-        .catch((e: Error) => {
+        .catch((e: unknown) => {
+          const message = e instanceof Error ? e.message : "Unknown error"
           setStates((prev) =>
             prev.map((s) =>
               s.column === column
-                ? { ...s, loading: false, error: e.message }
+                ? { ...s, loading: false, error: message }
                 : s
             )
           )
         })
     })
-  }, [sessionId, target, features, topN])
+  }, [sessionId, target, analysisResult, topN])
 
   if (!analysisResult) return null
 
@@ -183,7 +184,7 @@ export default function Histogram() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-zinc-500">Show top:</span>
           <div className="flex gap-1">
-            {TOP_N_OPTIONS.filter((n) => n <= features.length + 2).map((n) => (
+            {TOP_N_OPTIONS.filter((n) => n <= features.length).map((n) => (
               <button
                 key={n}
                 onClick={() => setTopN(n)}
