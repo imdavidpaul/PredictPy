@@ -65,6 +65,7 @@ except ImportError:
 REGRESSION_MODELS: dict[str, Any] = {
     "Linear Regression": lambda: LinearRegression(),
     "Ridge Regression": lambda: Ridge(alpha=1.0),
+    "LASSO": lambda: Lasso(alpha=1.0, max_iter=10000, random_state=42),
     "Random Forest": lambda: RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1),
 }
 
