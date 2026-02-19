@@ -1,14 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { RotateCcw, ChevronRight, ChevronLeft, LogOut, Sparkles, Search } from "lucide-react"
-import { AnimatePresence } from "framer-motion"
+import { RotateCcw, ChevronRight, ChevronLeft, Sparkles } from "lucide-react"
 import PredictpyLogo from "@/components/PredictpyLogo"
-import { Avatar } from "@/components/Avatar"
-import UserSearch from "@/components/UserSearch"
-import { deleteSession, getProfile } from "@/lib/api"
 import FileUpload from "@/components/FileUpload"
 import DatasetPreview from "@/components/DatasetPreview"
 import TargetSelector from "@/components/TargetSelector"
@@ -20,7 +13,6 @@ import StepIndicator from "@/components/StepIndicator"
 import ModelTrainer from "@/components/ModelTrainer"
 import ModelResults from "@/components/ModelResults"
 import { useStore } from "@/store/useStore"
-import { clearAuth, getEmail, getToken } from "@/lib/auth"
 
 const STEP_TITLES: Record<string, { title: string; subtitle: string }> = {
   upload: {
@@ -50,27 +42,7 @@ const STEP_TITLES: Record<string, { title: string; subtitle: string }> = {
 }
 
 export default function Dashboard() {
-  const router = useRouter()
   const { currentStep, setStep, reset, filename, sessionId, modelResult } = useStore()
-  const [username, setUsername]     = useState<string | null>(null)
-  const [avatarId, setAvatarId]     = useState(1)
-  const [searchOpen, setSearchOpen] = useState(false)
-
-  // Auth guard — redirect to /login if no token; also fetch avatar + username
-  useEffect(() => {
-    if (!getToken()) {
-      router.push("/login")
-    } else {
-      getProfile()
-        .then((p) => {
-          setAvatarId(p.avatar_id ?? 1)
-          setUsername(p.username ?? getEmail())
-        })
-        .catch(() => {
-          setUsername(getEmail())
-        })
-    }
-  }, [router])
 
   const info = STEP_TITLES[currentStep]
 
@@ -87,15 +59,6 @@ export default function Dashboard() {
 
   const goBack = () => setStep(stepOrder[stepIndex - 1] as typeof currentStep)
   const goNext = () => setStep(stepOrder[stepIndex + 1] as typeof currentStep)
-
-  const handleLogout = async () => {
-    if (sessionId) {
-      try { await deleteSession(sessionId) } catch { /* best-effort */ }
-    }
-    clearAuth()
-    reset()
-    router.push("/")
-  }
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
@@ -122,38 +85,6 @@ export default function Dashboard() {
                 Reset
               </button>
             )}
-            {/* Search users */}
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-              title="Search users"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Search</span>
-            </button>
-            <div className="flex items-center gap-3 border-l border-zinc-800 pl-4">
-              {username && (
-                <span className="text-xs text-zinc-500 hidden sm:block truncate max-w-[140px]">
-                  {username.startsWith("@") ? username : `@${username}`}
-                </span>
-              )}
-              {/* Avatar → profile link */}
-              <Link
-                href="/profile"
-                title="Edit profile"
-                className="rounded-xl overflow-hidden opacity-90 hover:opacity-100 hover:ring-2 hover:ring-violet-500 transition-all"
-              >
-                <Avatar avatarId={avatarId} size={32} />
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                title="Logout"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:block">Logout</span>
-              </button>
-            </div>
           </div>
         </div>
       </header>
@@ -282,11 +213,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* User search modal */}
-      <AnimatePresence>
-        {searchOpen && <UserSearch onClose={() => setSearchOpen(false)} />}
-      </AnimatePresence>
     </div>
   )
 }
