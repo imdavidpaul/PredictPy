@@ -1,16 +1,16 @@
 """
-FastAPI Backend — ML Feature Selection API
+FastAPI Backend -- ML Feature Selection API
 ==========================================
 Endpoints:
-  POST /auth/register      → Create account
-  POST /auth/login         → Login, receive JWT
-  POST /upload             → Parse file, return dataset profile  [auth]
-  POST /suggest-target     → Auto-suggest target columns         [auth]
-  POST /analyze            → Run feature selection algorithm     [auth]
-  POST /scatter            → Get scatter + regression line data  [auth]
-  POST /correlation-matrix → Get correlation matrix for heatmap [auth]
-  POST /train              → Train ML models on selected features[auth]
-  GET  /health             → Health check (no auth)
+  POST /upload             -> Parse file, return dataset profile
+  POST /suggest-target     -> Auto-suggest target columns
+  POST /analyze            -> Run feature selection algorithm
+  POST /scatter            -> Get scatter + regression line data
+  POST /distribution       -> Get histogram / distribution data
+  POST /correlation-matrix -> Get correlation matrix for heatmap
+  POST /train              -> Train ML models on selected features
+  GET  /models             -> List available model names
+  GET  /health             -> Health check (no auth)
 """
 
 import logging
@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -42,23 +42,6 @@ logging.basicConfig(
 logger = logging.getLogger("predictpy")
 
 from analyzer import parse_file, profile_dataset
-from auth import (
-    create_access_token,
-    create_user,
-    follow_user,
-    get_current_user,
-    get_followers,
-    get_following,
-    get_or_create_oauth_user,
-    get_profile,
-    get_public_profile,
-    get_user_by_email,
-    init_db,
-    search_users,
-    unfollow_user,
-    update_profile,
-    verify_password,
-)
 from feature_selector import (
     compute_correlation_matrix,
     detect_problem_type,
@@ -74,8 +57,7 @@ from model_trainer import get_available_models, train_models
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    logger.info("Database initialised. predictpy backend starting up.")
+    logger.info("predictpy backend starting up.")
     yield
     logger.info("predictpy backend shutting down.")
 
@@ -102,22 +84,19 @@ app.add_middleware(
 # In-memory session stores (keyed by session_id UUID).
 # In production, replace with Redis or a database.
 _sessions: dict[str, pd.DataFrame] = {}
-_session_owners: dict[str, int] = {}   # session_id → user_id
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_df(session_id: str, user_id: int) -> pd.DataFrame:
+def _get_df(session_id: str) -> pd.DataFrame:
     df = _sessions.get(session_id)
     if df is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Session '{session_id}' not found. Please upload a file first.",
+            detail=f"Session {session_id!r} not found. Please upload a file first.",
         )
-    if _session_owners.get(session_id) != user_id:
-        raise HTTPException(status_code=403, detail="Access denied to this session.")
     return df
 
 
@@ -128,21 +107,6 @@ def _error(msg: str, status: int = 400) -> HTTPException:
 # ---------------------------------------------------------------------------
 # Request / Response Models
 # ---------------------------------------------------------------------------
-
-class OAuthRequest(BaseModel):
-    email: str
-    name: str = ""
-
-
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
 
 class SuggestTargetRequest(BaseModel):
     session_id: str
@@ -192,186 +156,24 @@ class DropFeatureRequest(BaseModel):
     column: str
 
 
-class ProfileUpdateRequest(BaseModel):
-    username: str | None = None        # lowercase, 3–30 chars, alphanumeric + underscore
-    display_name: str | None = None
-    avatar_id: int | None = None       # 1–5
-    bio: str | None = None
-    city: str | None = None
-    country: str | None = None
-    website: str | None = None
-    github_url: str | None = None
-
 
 # ---------------------------------------------------------------------------
-# Endpoints — Auth (no token required)
+# ---------------------------------------------------------------------------
+# Endpoints -- Health
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health_check() -> dict:
-    from auth import _get_conn
-    try:
-        conn = _get_conn()
-        conn.execute("SELECT 1")
-        conn.close()
-        db_status = "ok"
-    except Exception as e:
-        logger.error("Health check: database error — %s", e)
-        db_status = "error"
-    return {"status": "ok" if db_status == "ok" else "degraded", "version": "2.0.0", "database": db_status}
-
-
-@app.post("/auth/oauth")
-def oauth_login(body: OAuthRequest) -> dict:
-    """
-    Called by the Next.js API route after a successful OAuth sign-in.
-    Creates or fetches the user account (no password) and returns a backend JWT.
-    """
-    if not body.email or "@" not in body.email:
-        raise _error("Invalid email from OAuth provider.")
-    try:
-        user = get_or_create_oauth_user(body.email)
-    except Exception as e:
-        raise _error(f"OAuth user creation failed: {e}")
-    token = create_access_token(user["id"], user["email"])
-    return {"access_token": token, "token_type": "bearer", "email": user["email"]}
-
-
-@app.post("/auth/register")
-def register(body: RegisterRequest) -> dict:
-    """Create a new user account."""
-    if not body.email or "@" not in body.email:
-        raise _error("Invalid email address.")
-    if len(body.password) < 6:
-        raise _error("Password must be at least 6 characters.")
-    try:
-        create_user(body.email, body.password)
-    except ValueError as e:
-        raise _error(str(e))
-    logger.info("New user registered: %s", body.email)
-    return {"message": "Account created successfully. Please log in."}
-
-
-@app.post("/auth/login")
-def login(body: LoginRequest) -> dict:
-    """Login and receive a JWT access token."""
-    user = get_user_by_email(body.email)
-    if not user or not verify_password(body.password, user["hashed_password"]):
-        logger.warning("Failed login attempt for: %s", body.email)
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
-    token = create_access_token(user["id"], user["email"])
-    logger.info("User logged in: %s", body.email)
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "email": user["email"],
-    }
+    return {"status": "ok", "version": "2.0.0"}
 
 
 # ---------------------------------------------------------------------------
-# Endpoints — Profile (auth required)
-# ---------------------------------------------------------------------------
-
-@app.get("/profile")
-def get_my_profile(current_user: dict = Depends(get_current_user)) -> dict:
-    """Return the current user's profile."""
-    profile = get_profile(current_user["id"])
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    return profile
-
-
-@app.put("/profile")
-def update_my_profile(
-    body: ProfileUpdateRequest,
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Update editable profile fields. Only provided fields are updated."""
-    if body.avatar_id is not None and body.avatar_id not in range(1, 6):
-        raise _error("avatar_id must be 1–5.")
-    try:
-        updated = update_profile(
-            current_user["id"],
-            **body.model_dump(exclude_none=True),
-        )
-    except ValueError as e:
-        raise _error(str(e))
-    if not updated:
-        raise HTTPException(status_code=404, detail="User not found.")
-    return updated
-
-
-# ---------------------------------------------------------------------------
-# Endpoints — Social (auth required)
-# ---------------------------------------------------------------------------
-
-@app.get("/users/search")
-def search_users_endpoint(
-    q: str = "",
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Search users by username or display_name. Requires at least 1 character."""
-    if not q.strip():
-        return {"users": []}
-    return {"users": search_users(q.strip())}
-
-
-@app.get("/users/{username}")
-def get_user_profile(
-    username: str,
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Return public profile for any user by username."""
-    profile = get_public_profile(username, viewer_id=current_user["id"])
-    if not profile:
-        raise HTTPException(status_code=404, detail="User not found.")
-    return profile
-
-
-@app.post("/users/{username}/follow")
-def follow(
-    username: str,
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Follow a user."""
-    try:
-        return follow_user(current_user["id"], username)
-    except ValueError as e:
-        raise _error(str(e))
-
-
-@app.delete("/users/{username}/follow")
-def unfollow(
-    username: str,
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Unfollow a user."""
-    try:
-        return unfollow_user(current_user["id"], username)
-    except ValueError as e:
-        raise _error(str(e))
-
-
-@app.get("/users/{username}/followers")
-def get_user_followers(username: str) -> list:
-    """Return the list of users who follow the given username. No auth required."""
-    return get_followers(username)
-
-
-@app.get("/users/{username}/following")
-def get_user_following(username: str) -> list:
-    """Return the list of users that the given username follows. No auth required."""
-    return get_following(username)
-
-
-# ---------------------------------------------------------------------------
-# Endpoints — Dataset (auth required)
+# Endpoints -- Dataset
 # ---------------------------------------------------------------------------
 
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Upload a CSV or Excel file.
@@ -405,10 +207,9 @@ async def upload_file(
 
     session_id = str(uuid.uuid4())
     _sessions[session_id] = df
-    _session_owners[session_id] = current_user["id"]
     logger.info(
-        "File uploaded by user %d: %s (%d rows, %d cols, %.1f KB)",
-        current_user["id"], file.filename, df.shape[0], df.shape[1], len(contents) / 1024,
+        "File uploaded: %s (%d rows, %d cols, %.1f KB)",
+        file.filename, df.shape[0], df.shape[1], len(contents) / 1024,
     )
 
     try:
@@ -431,9 +232,8 @@ async def upload_file(
 @app.post("/suggest-target")
 def suggest_target(
     body: SuggestTargetRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    df = _get_df(body.session_id, current_user["id"])
+    df = _get_df(body.session_id)
     try:
         suggestions = suggest_target_columns(df)
     except Exception as e:
@@ -444,9 +244,8 @@ def suggest_target(
 @app.post("/analyze")
 def analyze(
     body: AnalyzeRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    df = _get_df(body.session_id, current_user["id"])
+    df = _get_df(body.session_id)
 
     if body.target_column not in df.columns:
         raise _error(f"Column '{body.target_column}' not found in dataset.")
@@ -471,9 +270,8 @@ def analyze(
 @app.post("/scatter")
 def scatter(
     body: ScatterRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    df = _get_df(body.session_id, current_user["id"])
+    df = _get_df(body.session_id)
 
     for col in (body.feature_column, body.target_column):
         if col not in df.columns:
@@ -497,14 +295,13 @@ def scatter(
 @app.post("/distribution")
 def get_distribution(
     body: dict,
-    user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     session_id = body.get("session_id", "")
     column = body.get("column", "")
     target_column = body.get("target_column", "")
     n_bins = int(body.get("n_bins", 20))
 
-    df = _get_df(session_id, user["id"])
+    df = _get_df(session_id)
 
     if column not in df.columns:
         raise HTTPException(400, f"Column '{column}' not found")
@@ -642,9 +439,8 @@ def get_distribution(
 @app.post("/correlation-matrix")
 def correlation_matrix(
     body: CorrelationRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    df = _get_df(body.session_id, current_user["id"])
+    df = _get_df(body.session_id)
 
     if body.method not in ("pearson", "spearman", "kendall"):
         raise _error("method must be 'pearson', 'spearman', or 'kendall'.")
@@ -674,10 +470,9 @@ def list_models(
 @app.post("/engineer-feature")
 def engineer_feature(
     body: EngineerFeatureRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a new derived feature column in the session."""
-    df = _get_df(body.session_id, current_user["id"])
+    df = _get_df(body.session_id)
 
     for col in (body.col_a, body.col_b):
         if col not in df.columns:
@@ -723,10 +518,9 @@ def engineer_feature(
 @app.post("/drop-feature")
 def drop_feature(
     body: DropFeatureRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Remove a column from the session dataset."""
-    df = _get_df(body.session_id, current_user["id"])
+    df = _get_df(body.session_id)
 
     if body.column not in df.columns:
         raise _error(f"Column '{body.column}' not found.")
@@ -742,9 +536,8 @@ def drop_feature(
 @app.post("/train")
 def train(
     body: TrainRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    df = _get_df(body.session_id, current_user["id"])
+    df = _get_df(body.session_id)
 
     if body.target_column not in df.columns:
         raise _error(f"Column '{body.target_column}' not found.")
@@ -784,10 +577,7 @@ def train(
 @app.delete("/session/{session_id}")
 def delete_session(
     session_id: str,
-    current_user: dict = Depends(get_current_user),
 ) -> dict:
     """Remove a session and free its memory."""
-    if _session_owners.get(session_id) == current_user["id"]:
-        _sessions.pop(session_id, None)
-        _session_owners.pop(session_id, None)
+    _sessions.pop(session_id, None)
     return {"deleted": session_id}
