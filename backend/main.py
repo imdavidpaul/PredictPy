@@ -596,13 +596,17 @@ def get_distribution(
             upper_fence = q3 + 1.5 * iqr
             non_outliers = arr[(arr >= lower_fence) & (arr <= upper_fence)]
             outlier_vals = arr[(arr < lower_fence) | (arr > upper_fence)]
+            sorted_out = sorted(outlier_vals.tolist())
+            if len(sorted_out) > 100:
+                half = 50
+                sorted_out = sorted_out[:half] + sorted_out[-half:]
             box_stats = {
                 "min": round(float(non_outliers.min()) if len(non_outliers) else q1, 6),
                 "q1": round(q1, 6),
                 "median": round(median, 6),
                 "q3": round(q3, 6),
                 "max": round(float(non_outliers.max()) if len(non_outliers) else q3, 6),
-                "outliers": [round(float(v), 6) for v in sorted(outlier_vals)[:100]],
+                "outliers": [round(float(v), 6) for v in sorted_out],
             }
         except Exception:
             box_stats = None
