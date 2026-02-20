@@ -17,10 +17,18 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    RandomForestRegressor,
+    StackingClassifier,
+    StackingRegressor,
+    VotingClassifier,
+    VotingRegressor,
+)
 from sklearn.linear_model import Lasso, LinearRegression, LogisticRegression, Ridge
 from sklearn.metrics import (
     accuracy_score,
+    confusion_matrix,
     f1_score,
     mean_absolute_error,
     mean_squared_error,
@@ -34,7 +42,20 @@ from sklearn.model_selection import (
     cross_val_score,
     train_test_split,
 )
+from sklearn.metrics import roc_curve
 from sklearn.preprocessing import LabelEncoder
+
+try:
+    from sklearn.calibration import calibration_curve
+    HAS_CALIBRATION = True
+except ImportError:
+    HAS_CALIBRATION = False
+
+try:
+    from scipy import stats as _scipy_stats
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
 
 # ---------------------------------------------------------------------------
 # Optional gradient-boosting libraries (Python 3.13 wheels available)
@@ -105,6 +126,45 @@ if HAS_CATBOOST:
     )
 
 
+def _build_voting_regressor() -> VotingRegressor:
+    estimators = [
+        ("lr", LinearRegression()),
+        ("ridge", Ridge(alpha=1.0)),
+        ("rf", RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)),
+    ]
+    return VotingRegressor(estimators=estimators)
+
+
+def _build_stacking_regressor() -> StackingRegressor:
+    estimators = [
+        ("ridge", Ridge(alpha=1.0)),
+        ("rf", RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)),
+    ]
+    return StackingRegressor(estimators=estimators, final_estimator=LinearRegression())
+
+
+def _build_voting_classifier() -> VotingClassifier:
+    estimators = [
+        ("lr", LogisticRegression(max_iter=1000, random_state=42)),
+        ("rf", RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)),
+    ]
+    return VotingClassifier(estimators=estimators, voting="soft")
+
+
+def _build_stacking_classifier() -> StackingClassifier:
+    estimators = [
+        ("lr", LogisticRegression(max_iter=1000, random_state=42)),
+        ("rf", RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)),
+    ]
+    return StackingClassifier(estimators=estimators, final_estimator=LogisticRegression(max_iter=1000, random_state=42))
+
+
+REGRESSION_MODELS["Voting Ensemble"] = _build_voting_regressor
+REGRESSION_MODELS["Stacking"] = _build_stacking_regressor
+CLASSIFICATION_MODELS["Voting Ensemble"] = _build_voting_classifier
+CLASSIFICATION_MODELS["Stacking"] = _build_stacking_classifier
+
+
 def get_available_models(problem_type: str) -> list[str]:
     """Return the list of model names available for the given problem type."""
     registry = REGRESSION_MODELS if problem_type == "regression" else CLASSIFICATION_MODELS
@@ -115,32 +175,90 @@ def get_available_models(problem_type: str) -> list[str]:
 # Preprocessing (mirrors feature_selector.py approach)
 # ---------------------------------------------------------------------------
 
-def _encode_col(series: pd.Series) -> pd.Series:
+def _encode_col(series: pd.Series) -> tuple[pd.Series, LabelEncoder]:
     le = LabelEncoder()
     filled = series.fillna("__MISSING__").astype(str)
-    return pd.Series(le.fit_transform(filled), index=series.index, name=series.name)
+    encoded = pd.Series(le.fit_transform(filled), index=series.index, name=series.name)
+    return encoded, le
 
 
 def _prepare(
     df: pd.DataFrame,
     target_col: str,
     feature_columns: list[str],
-) -> tuple[pd.DataFrame, pd.Series]:
+) -> tuple[pd.DataFrame, pd.Series, dict]:
+    """
+    Prepare features and target for training.
+    Returns (X, y, meta) where meta contains fitted encoders/medians for inference.
+    """
     X = df[feature_columns].copy()
     y = df[target_col].copy()
 
+    meta: dict = {
+        "feature_columns": list(feature_columns),
+        "encoders": {},       # col -> fitted LabelEncoder (categorical features)
+        "medians": {},        # col -> float (numeric feature NaN fill)
+        "target_encoder": None,
+        "ranges": {},         # col -> (min, max) for extrapolation detection
+        "train_distributions": {},  # col -> list[float|str] sampled from training set
+    }
+
     if not pd.api.types.is_numeric_dtype(y):
-        y = _encode_col(y)
+        y, le = _encode_col(y)
+        meta["target_encoder"] = le
     else:
         y = y.fillna(y.median())
 
     for col in X.columns:
         if not pd.api.types.is_numeric_dtype(X[col]):
-            X[col] = _encode_col(X[col])
+            # Store raw categorical values before encoding (sample up to 1000)
+            raw = df[col].dropna().astype(str).tolist()
+            meta["train_distributions"][col] = raw[:1000]
+            X[col], le = _encode_col(X[col])
+            meta["encoders"][col] = le
         else:
-            X[col] = X[col].fillna(X[col].median())
+            median = float(X[col].median())
+            X[col] = X[col].fillna(median)
+            meta["medians"][col] = median
+            meta["ranges"][col] = (float(X[col].min()), float(X[col].max()))
+            # Store numeric sample for KS test (up to 1000 rows)
+            raw_num = df[col].dropna().tolist()
+            meta["train_distributions"][col] = raw_num[:1000]
 
-    return X, y
+    return X, y, meta
+
+
+def apply_meta(X: pd.DataFrame, meta: dict) -> tuple[pd.DataFrame, list[str]]:
+    """
+    Apply stored preprocessing meta to new feature data (for inference).
+    Returns (X_processed, warnings).
+    """
+    feature_cols = meta["feature_columns"]
+    X = X.reindex(columns=feature_cols).copy()
+    warnings_list: list[str] = []
+
+    for col in feature_cols:
+        if col in meta["encoders"]:
+            le: LabelEncoder = meta["encoders"][col]
+            filled = X[col].fillna("__MISSING__").astype(str)
+            known = set(le.classes_)
+            unseen = {v for v in filled.unique() if v not in known}
+            if unseen:
+                warnings_list.append(
+                    f"'{col}' has unseen categories {unseen} — mapped to default"
+                )
+                fallback = le.classes_[0]
+                filled = filled.map(lambda v, k=known, fb=fallback: v if v in k else fb)
+            try:
+                X[col] = le.transform(filled)
+            except Exception:
+                X[col] = 0
+        elif col in meta["medians"]:
+            X[col] = pd.to_numeric(X[col], errors="coerce").fillna(meta["medians"][col])
+        else:
+            X[col] = pd.to_numeric(X[col], errors="coerce").fillna(0)
+
+    return X, warnings_list
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +367,36 @@ def _train_one(
         else:
             metrics["roc_auc"] = None
 
+    # Bootstrap confidence intervals (500 resamples)
+    try:
+        y_test_arr = np.array(y_test.tolist())
+        y_pred_arr = np.array([float(v) for v in y_pred])
+        n_boot = 500
+        rng = np.random.default_rng(42)
+        boot_metrics: dict[str, list[float]] = {}
+        metric_keys = list(metrics.keys())
+        for _ in range(n_boot):
+            idx = rng.integers(0, len(y_test_arr), size=len(y_test_arr))
+            yt_b = y_test_arr[idx]
+            yp_b = y_pred_arr[idx]
+            if problem_type == "regression":
+                boot_metrics.setdefault("r2", []).append(float(r2_score(yt_b, yp_b)))
+                boot_metrics.setdefault("mae", []).append(float(mean_absolute_error(yt_b, yp_b)))
+                boot_metrics.setdefault("rmse", []).append(float(np.sqrt(mean_squared_error(yt_b, yp_b))))
+            else:
+                boot_metrics.setdefault("accuracy", []).append(float(accuracy_score(yt_b, yp_b)))
+                boot_metrics.setdefault("f1", []).append(float(f1_score(yt_b, yp_b, average="weighted", zero_division=0)))
+        ci: dict[str, dict] = {}
+        for k, vals in boot_metrics.items():
+            arr_v = np.array(vals)
+            ci[k] = {
+                "lower": round(float(np.percentile(arr_v, 2.5)), 6),
+                "upper": round(float(np.percentile(arr_v, 97.5)), 6),
+            }
+        metrics["ci"] = ci  # type: ignore
+    except Exception:
+        metrics["ci"] = None  # type: ignore
+
     # Cross-validation scores (run in parallel with training via ThreadPool)
     if cv_strategy != "train_test_split":
         cv_mean, cv_std = _run_cv(model_factory, X_full, y_full, problem_type, cv_strategy, cv_folds)
@@ -280,6 +428,189 @@ def _train_one(
     }
 
 
+def evaluate_model(
+    model: Any,
+    df: pd.DataFrame,
+    target_col: str,
+    feature_columns: list[str],
+    problem_type: str,
+    meta: dict | None = None,
+) -> dict[str, Any]:
+    """
+    Evaluate a trained model on a new dataset.
+    If meta is provided, use stored encoders/medians for consistent preprocessing.
+    """
+    if meta is not None:
+        X, _ = apply_meta(df[feature_columns], meta)
+        y = df[target_col].copy()
+        if meta["target_encoder"] is not None:
+            le = meta["target_encoder"]
+            filled = y.fillna("__MISSING__").astype(str)
+            known = set(le.classes_)
+            filled = filled.map(lambda v, k=known, c=le.classes_: v if v in k else c[0])
+            y = pd.Series(le.transform(filled), index=y.index)
+        else:
+            y = pd.to_numeric(y, errors="coerce").fillna(y.median())
+    else:
+        X, y, _ = _prepare(df, target_col, feature_columns)
+    y_pred = model.predict(X)
+
+    metrics: dict[str, Any] = {
+        "problem_type": problem_type,
+        "n_samples": len(df),
+    }
+
+    if problem_type == "regression":
+        metrics["r2"] = round(float(r2_score(y, y_pred)), 6)
+        metrics["mae"] = round(float(mean_absolute_error(y, y_pred)), 6)
+        metrics["rmse"] = round(float(np.sqrt(mean_squared_error(y, y_pred))), 6)
+
+        # Add predictions for scatter plot (sample up to 1000)
+        actual = y.tolist()
+        predicted = [round(float(v), 6) for v in y_pred]
+        if len(actual) > 1000:
+            indices = list(range(len(actual)))
+            random.seed(42)
+            sampled = random.sample(indices, 1000)
+            actual = [actual[i] for i in sampled]
+            predicted = [predicted[i] for i in sampled]
+        metrics["predictions"] = [{"actual": a, "predicted": p} for a, p in zip(actual, predicted)]
+
+        # Residuals (fitted vs residual), sample up to 500
+        try:
+            fitted_vals = [round(float(v), 6) for v in y_pred]
+            residual_vals = [round(float(a - p), 6) for a, p in zip(y.tolist(), [float(v) for v in y_pred])]
+            if len(fitted_vals) > 500:
+                rng2 = np.random.default_rng(42)
+                idx2 = rng2.integers(0, len(fitted_vals), size=500).tolist()
+                fitted_vals = [fitted_vals[i] for i in idx2]
+                residual_vals = [residual_vals[i] for i in idx2]
+            metrics["residuals"] = [
+                {"fitted": f, "residual": r}
+                for f, r in zip(fitted_vals, residual_vals)
+            ]
+        except Exception:
+            metrics["residuals"] = None
+    else:
+        metrics["accuracy"] = round(float(accuracy_score(y, y_pred)), 6)
+        metrics["f1"] = round(float(f1_score(y, y_pred, average="weighted", zero_division=0)), 6)
+
+        # Confusion matrix
+        try:
+            labels = sorted(np.unique(np.concatenate([np.array(y), np.array(y_pred)])).tolist())
+            cm = confusion_matrix(y, y_pred, labels=labels)
+            metrics["confusion_matrix"] = cm.tolist()
+            metrics["class_labels"] = [str(l) for l in labels]
+        except Exception:
+            metrics["confusion_matrix"] = None
+            metrics["class_labels"] = None
+
+        if hasattr(model, "predict_proba"):
+            try:
+                n_classes = len(np.unique(y))
+                if n_classes == 2:
+                    y_prob = model.predict_proba(X)[:, 1]
+                    metrics["roc_auc"] = round(float(roc_auc_score(y, y_prob)), 6)
+
+                    # Compute ROC curve points
+                    fpr, tpr, _ = roc_curve(y, y_prob)
+                    # Sample down to 100 points for the chart
+                    if len(fpr) > 100:
+                        indices = np.linspace(0, len(fpr) - 1, 100).astype(int)
+                        fpr = fpr[indices]
+                        tpr = tpr[indices]
+                    metrics["roc_curve"] = [
+                        {"fpr": round(float(f), 4), "tpr": round(float(t), 4)}
+                        for f, t in zip(fpr, tpr)
+                    ]
+
+                    # Calibration curve (binary only)
+                    if HAS_CALIBRATION:
+                        try:
+                            frac_pos, mean_pred = calibration_curve(y, y_prob, n_bins=10)
+                            metrics["calibration"] = {
+                                "fraction_of_positives": [round(float(v), 6) for v in frac_pos],
+                                "mean_predicted": [round(float(v), 6) for v in mean_pred],
+                            }
+                        except Exception:
+                            metrics["calibration"] = None
+                    else:
+                        metrics["calibration"] = None
+                else:
+                    metrics["roc_auc"] = None
+                    metrics["roc_curve"] = None
+                    metrics["calibration"] = None
+            except Exception:
+                metrics["roc_auc"] = None
+                metrics["roc_curve"] = None
+                metrics["calibration"] = None
+        else:
+            metrics["roc_auc"] = None
+            metrics["roc_curve"] = None
+            metrics["calibration"] = None
+
+    # ---------------------------------------------------------------------------
+    # Data Drift Detection (KS test for numeric, chi-square for categorical)
+    # ---------------------------------------------------------------------------
+    if meta is not None and HAS_SCIPY and "train_distributions" in meta:
+        drift_results = []
+        for col in feature_columns:
+            if col not in df.columns:
+                continue
+            train_dist = meta["train_distributions"].get(col)
+            if not train_dist:
+                continue
+            eval_col = df[col].dropna()
+            if len(eval_col) == 0:
+                continue
+            try:
+                if col in meta.get("encoders", {}):
+                    # Categorical: chi-square on value frequencies
+                    train_counts: dict = {}
+                    for v in train_dist:
+                        train_counts[v] = train_counts.get(v, 0) + 1
+                    eval_vals = eval_col.astype(str).tolist()
+                    eval_counts: dict = {}
+                    for v in eval_vals:
+                        eval_counts[v] = eval_counts.get(v, 0) + 1
+                    all_cats = sorted(set(train_counts) | set(eval_counts))
+                    if len(all_cats) < 2:
+                        continue
+                    obs = [eval_counts.get(c, 0) for c in all_cats]
+                    exp_raw = [train_counts.get(c, 0) for c in all_cats]
+                    exp_sum = sum(exp_raw)
+                    obs_sum = sum(obs)
+                    if exp_sum == 0 or obs_sum == 0:
+                        continue
+                    exp_norm = [e / exp_sum * obs_sum for e in exp_raw]
+                    # Avoid zero expected frequencies
+                    exp_norm = [max(e, 1e-9) for e in exp_norm]
+                    stat, p_val = _scipy_stats.chisquare(obs, f_exp=exp_norm)
+                    drift_results.append({
+                        "feature": col,
+                        "test": "chi2",
+                        "p_value": round(float(p_val), 6),
+                        "drifted": bool(p_val < 0.05),
+                    })
+                else:
+                    # Numeric: Kolmogorov-Smirnov test
+                    train_arr = [float(v) for v in train_dist]
+                    eval_arr = eval_col.astype(float).tolist()
+                    stat, p_val = _scipy_stats.ks_2samp(train_arr, eval_arr)
+                    drift_results.append({
+                        "feature": col,
+                        "test": "ks",
+                        "p_value": round(float(p_val), 6),
+                        "drifted": bool(p_val < 0.05),
+                    })
+            except Exception:
+                pass
+        if drift_results:
+            metrics["drift"] = drift_results
+
+    return metrics
+
+
 # ---------------------------------------------------------------------------
 # Main Training Function
 # ---------------------------------------------------------------------------
@@ -293,12 +624,13 @@ def train_models(
     models_to_train: list[str] | None = None,
     cv_strategy: str = "train_test_split",
     cv_folds: int = 5,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], tuple[Any, dict]]:
     """
     Train multiple ML models and return metrics, importances, predictions, and
     a base64-encoded pickle of the best model.
+    Returns (result_dict, (best_model_object, preprocessing_meta)).
     """
-    X, y = _prepare(df, target_col, feature_columns)
+    X, y, meta = _prepare(df, target_col, feature_columns)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=42
@@ -368,4 +700,4 @@ def train_models(
         "best_model": best_model_name,
         "model_bytes": model_bytes,
         "available_models": get_available_models(problem_type),
-    }
+    }, (best["model_object"], meta)

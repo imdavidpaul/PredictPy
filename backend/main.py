@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -49,7 +49,7 @@ from feature_selector import (
     select_features,
     suggest_target_columns,
 )
-from model_trainer import get_available_models, train_models
+from model_trainer import apply_meta, evaluate_model, get_available_models, train_models
 
 # ---------------------------------------------------------------------------
 # App Setup
@@ -84,6 +84,8 @@ app.add_middleware(
 # In-memory session stores (keyed by session_id UUID).
 # In production, replace with Redis or a database.
 _sessions: dict[str, pd.DataFrame] = {}
+# session_id -> {"model": fitted_model, "meta": preprocessing_meta}
+_best_models: dict[str, dict[str, Any]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -190,9 +192,9 @@ async def upload_file(
     if len(contents) == 0:
         raise _error("Uploaded file is empty.")
 
-    MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+    MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
     if len(contents) > MAX_UPLOAD_BYTES:
-        raise _error("File too large. Maximum upload size is 100 MB.")
+        raise _error("Oops! Not Today, we only accept <50MB file")
 
     try:
         df = parse_file(contents, file.filename)
@@ -557,7 +559,7 @@ def train(
         raise _error("cv_folds must be between 2 and 20.")
 
     try:
-        result = train_models(
+        result, (best_model_obj, meta) = train_models(
             df=df,
             target_col=body.target_column,
             problem_type=body.problem_type,
@@ -567,8 +569,217 @@ def train(
             cv_strategy=body.cv_strategy,
             cv_folds=body.cv_folds,
         )
+        _best_models[body.session_id] = {"model": best_model_obj, "meta": meta}
     except Exception as e:
         raise _error(f"Model training failed: {e}")
+
+    return result
+
+
+@app.post("/evaluate")
+async def evaluate(
+    session_id: str = Form(...),
+    target_column: str = Form(...),
+    problem_type: str = Form(...),
+    feature_columns: str = Form(...),  # JSON string of list
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """
+    Evaluate the best trained model from the session on a NEW uploaded dataset.
+    """
+    import json
+    feature_cols = json.loads(feature_columns)
+
+    model_data = _best_models.get(session_id)
+    if model_data is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No trained model found for this session. Please train a model first.",
+        )
+    model = model_data["model"]
+    meta = model_data["meta"]
+
+    # Read the evaluation file
+    contents = await file.read()
+    try:
+        df_eval = parse_file(contents, file.filename)
+    except Exception as e:
+        raise _error(f"Could not parse evaluation file: {e}")
+
+    # Check for required columns
+    missing = [c for c in [target_column] + feature_cols if c not in df_eval.columns]
+    if missing:
+        raise _error(f"Evaluation dataset is missing required columns: {missing}")
+
+    try:
+        result = evaluate_model(
+            model=model,
+            df=df_eval,
+            target_col=target_column,
+            feature_columns=feature_cols,
+            problem_type=problem_type,
+            meta=meta,
+        )
+    except Exception as e:
+        raise _error(f"Evaluation failed: {e}")
+
+    return result
+
+
+class PredictRequest(BaseModel):
+    session_id: str
+    feature_values: dict[str, float | str | int]
+
+
+@app.post("/predict")
+def predict_single(body: PredictRequest) -> dict[str, Any]:
+    """
+    Single-row real-time prediction using stored model + preprocessing meta.
+    Returns prediction, optional probabilities, prediction interval (RF regression), and warnings.
+    """
+    model_data = _best_models.get(body.session_id)
+    if model_data is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No trained model found for this session. Please train a model first.",
+        )
+    model = model_data["model"]
+    meta = model_data["meta"]
+    feature_cols = meta["feature_columns"]
+
+    # Build one-row DataFrame from provided feature values
+    row = {col: [body.feature_values.get(col)] for col in feature_cols}
+    X_df = pd.DataFrame(row)
+
+    # Check extrapolation before encoding (on raw numeric values)
+    extra_warnings: list[str] = []
+    for col in feature_cols:
+        if col in meta["ranges"] and col in body.feature_values:
+            val = body.feature_values[col]
+            if isinstance(val, (int, float)):
+                lo, hi = meta["ranges"][col]
+                if val < lo or val > hi:
+                    extra_warnings.append(
+                        f"'{col}' value {val} is outside training range [{lo:.4g}, {hi:.4g}]"
+                    )
+
+    # Apply stored preprocessing
+    X_processed, meta_warnings = apply_meta(X_df, meta)
+    warnings = meta_warnings + extra_warnings
+
+    try:
+        raw_pred = model.predict(X_processed)[0]
+    except Exception as e:
+        raise _error(f"Prediction failed: {e}")
+
+    prediction: float | str
+    if isinstance(raw_pred, (int, float, np.integer, np.floating)):
+        prediction = round(float(raw_pred), 6)
+    else:
+        prediction = str(raw_pred)
+
+    # Decode classification prediction via target encoder
+    if meta["target_encoder"] is not None and isinstance(raw_pred, (int, float, np.integer, np.floating)):
+        try:
+            prediction = str(meta["target_encoder"].inverse_transform([int(round(float(raw_pred)))])[0])
+        except Exception:
+            pass
+
+    result: dict[str, Any] = {"prediction": prediction, "warnings": warnings}
+
+    # Probabilities (classification)
+    if hasattr(model, "predict_proba"):
+        try:
+            proba = model.predict_proba(X_processed)[0]
+            te = meta["target_encoder"]
+            classes = te.classes_ if te is not None else [str(i) for i in range(len(proba))]
+            result["probabilities"] = {
+                str(cls): round(float(p), 6) for cls, p in zip(classes, proba)
+            }
+        except Exception:
+            pass
+
+    # Prediction interval via RF tree ensemble (regression)
+    if hasattr(model, "estimators_"):
+        try:
+            tree_preds = np.array([t.predict(X_processed)[0] for t in model.estimators_])
+            result["prediction_interval"] = {
+                "lower_95": round(float(np.percentile(tree_preds, 2.5)), 6),
+                "upper_95": round(float(np.percentile(tree_preds, 97.5)), 6),
+            }
+        except Exception:
+            pass
+
+    return result
+
+
+@app.post("/predict-batch")
+async def predict_batch(
+    session_id: str = Form(...),
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """
+    Batch prediction: upload a CSV/XLSX without the target column, get predictions back.
+    """
+    model_data = _best_models.get(session_id)
+    if model_data is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No trained model found for this session. Please train a model first.",
+        )
+    model = model_data["model"]
+    meta = model_data["meta"]
+
+    contents = await file.read()
+    try:
+        df_batch = parse_file(contents, file.filename)
+    except Exception as e:
+        raise _error(f"Could not parse batch file: {e}")
+
+    if df_batch.shape[0] == 0:
+        raise _error("Batch file has no rows.")
+
+    # Only use columns that exist in both the file and training features
+    available_features = [c for c in meta["feature_columns"] if c in df_batch.columns]
+    missing_features = [c for c in meta["feature_columns"] if c not in df_batch.columns]
+
+    X_df = df_batch.reindex(columns=meta["feature_columns"])  # fill missing cols with NaN
+    X_processed, warnings = apply_meta(X_df, meta)
+
+    try:
+        raw_preds = model.predict(X_processed)
+    except Exception as e:
+        raise _error(f"Batch prediction failed: {e}")
+
+    # Decode predictions for classification
+    te = meta["target_encoder"]
+    if te is not None:
+        try:
+            decoded = [str(te.inverse_transform([int(round(float(p)))])[0]) for p in raw_preds]
+        except Exception:
+            decoded = [str(p) for p in raw_preds]
+        predictions_out: list = decoded
+    else:
+        predictions_out = [round(float(p), 6) for p in raw_preds]
+
+    result: dict[str, Any] = {
+        "predictions": predictions_out,
+        "n_rows": len(predictions_out),
+        "warnings": warnings,
+        "missing_features": missing_features,
+    }
+
+    # Probabilities (classification)
+    if hasattr(model, "predict_proba"):
+        try:
+            proba_matrix = model.predict_proba(X_processed)
+            classes = te.classes_ if te is not None else [str(i) for i in range(proba_matrix.shape[1])]
+            result["probabilities"] = [
+                {str(cls): round(float(p), 6) for cls, p in zip(classes, row)}
+                for row in proba_matrix
+            ]
+        except Exception:
+            pass
 
     return result
 
@@ -580,3 +791,585 @@ def delete_session(
     """Remove a session and free its memory."""
     _sessions.pop(session_id, None)
     return {"deleted": session_id}
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: Outlier Detection
+# ---------------------------------------------------------------------------
+
+class OutlierRequest(BaseModel):
+    session_id: str
+    columns: list[str] | None = None
+
+
+@app.post("/outliers")
+def get_outliers(body: OutlierRequest) -> dict[str, Any]:
+    """
+    Detect outliers per column using Z-score (|z|>3) and IQR methods.
+    Returns per-column counts and percentages.
+    """
+    df = _get_df(body.session_id)
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+    if body.columns:
+        cols = [c for c in body.columns if c in numeric_cols]
+    else:
+        cols = numeric_cols
+
+    results = []
+    n = len(df)
+    for col in cols:
+        series = df[col].dropna()
+        if len(series) < 4:
+            continue
+        # Z-score outliers
+        z_scores = np.abs(scipy_stats.zscore(series.astype(float)))
+        z_count = int((z_scores > 3).sum())
+
+        # IQR outliers
+        q1, q3 = float(series.quantile(0.25)), float(series.quantile(0.75))
+        iqr = q3 - q1
+        iqr_count = int(((series < q1 - 1.5 * iqr) | (series > q3 + 1.5 * iqr)).sum())
+
+        results.append({
+            "column": col,
+            "z_score_count": z_count,
+            "iqr_count": iqr_count,
+            "z_score_pct": round(z_count / n * 100, 2) if n > 0 else 0.0,
+            "iqr_pct": round(iqr_count / n * 100, 2) if n > 0 else 0.0,
+            "n_valid": int(len(series)),
+        })
+
+    return {"outliers": results, "n_rows": n}
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: VIF (Multicollinearity) Scores
+# ---------------------------------------------------------------------------
+
+class VIFRequest(BaseModel):
+    session_id: str
+    feature_columns: list[str]
+
+
+@app.post("/vif")
+def get_vif(body: VIFRequest) -> dict[str, Any]:
+    """
+    Compute Variance Inflation Factor (VIF) for selected feature columns.
+    Returns [{feature, vif}] sorted descending by VIF.
+    """
+    try:
+        from statsmodels.stats.outliers_influence import variance_inflation_factor
+    except ImportError:
+        raise _error("statsmodels is not installed.", 500)
+
+    df = _get_df(body.session_id)
+    numeric_cols = [c for c in body.feature_columns if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+
+    if len(numeric_cols) < 2:
+        raise _error("At least 2 numeric feature columns are required to compute VIF.")
+
+    subset = df[numeric_cols].copy()
+    for col in subset.columns:
+        subset[col] = subset[col].fillna(subset[col].median())
+
+    # Drop columns with zero variance
+    subset = subset.loc[:, subset.std() > 0]
+    cols = list(subset.columns)
+
+    if len(cols) < 2:
+        raise _error("Not enough variance in selected columns to compute VIF.")
+
+    X = subset.values.astype(float)
+    vif_data = []
+    for i, col in enumerate(cols):
+        try:
+            vif_val = float(variance_inflation_factor(X, i))
+            vif_val = None if np.isinf(vif_val) or np.isnan(vif_val) else round(vif_val, 4)
+        except Exception:
+            vif_val = None
+        vif_data.append({"feature": col, "vif": vif_val})
+
+    vif_data.sort(key=lambda x: (x["vif"] is None, x["vif"] or 0), reverse=True)
+    return {"vif": vif_data}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Learning Curves
+# ---------------------------------------------------------------------------
+
+class LearningCurveRequest(BaseModel):
+    session_id: str
+    target_column: str
+    feature_columns: list[str]
+    problem_type: str
+    model_name: str = "Random Forest"
+
+
+@app.post("/learning-curve")
+def get_learning_curve(body: LearningCurveRequest) -> dict[str, Any]:
+    """
+    Compute learning curve: train at 5 dataset size fractions (10%→100%).
+    Returns [{train_size, train_score, val_score}].
+    """
+    from model_trainer import _prepare, REGRESSION_MODELS, CLASSIFICATION_MODELS
+
+    df = _get_df(body.session_id)
+
+    if body.target_column not in df.columns:
+        raise _error(f"Column '{body.target_column}' not found.")
+    missing = [c for c in body.feature_columns if c not in df.columns]
+    if missing:
+        raise _error(f"Feature columns not found: {missing}")
+    if body.problem_type not in ("regression", "classification"):
+        raise _error("problem_type must be 'regression' or 'classification'.")
+
+    registry = REGRESSION_MODELS if body.problem_type == "regression" else CLASSIFICATION_MODELS
+    if body.model_name not in registry:
+        raise _error(f"Model '{body.model_name}' not available.")
+
+    try:
+        X, y, _ = _prepare(df, body.target_column, body.feature_columns)
+    except Exception as e:
+        raise _error(f"Preprocessing failed: {e}")
+
+    scoring = "r2" if body.problem_type == "regression" else "f1_weighted"
+    fractions = [0.1, 0.25, 0.5, 0.75, 1.0]
+    results = []
+    n = len(X)
+
+    for frac in fractions:
+        size = max(10, int(n * frac))
+        if size >= n:
+            X_sub, y_sub = X, y
+        else:
+            idx = np.random.default_rng(42).integers(0, n, size=size)
+            X_sub = X.iloc[idx]
+            y_sub = y.iloc[idx]
+
+        if len(X_sub) < 4:
+            continue
+
+        from sklearn.model_selection import cross_val_score
+        try:
+            model_factory = registry[body.model_name]
+            cv = min(5, len(X_sub))
+            scores = cross_val_score(model_factory(), X_sub, y_sub, cv=cv, scoring=scoring, n_jobs=-1)
+            # Train score: fit on subset, score on subset
+            m = model_factory()
+            m.fit(X_sub, y_sub)
+            from sklearn.metrics import r2_score as _r2, f1_score as _f1, accuracy_score as _acc
+            if body.problem_type == "regression":
+                train_score = float(_r2(y_sub, m.predict(X_sub)))
+            else:
+                train_score = float(_f1(y_sub, m.predict(X_sub), average="weighted", zero_division=0))
+            results.append({
+                "train_size": size,
+                "train_score": round(train_score, 6),
+                "val_score": round(float(scores.mean()), 6),
+                "val_std": round(float(scores.std()), 6),
+            })
+        except Exception:
+            continue
+
+    return {"learning_curve": results, "scoring": scoring}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Partial Dependence Plots
+# ---------------------------------------------------------------------------
+
+class PDPRequest(BaseModel):
+    session_id: str
+    feature_column: str
+
+
+@app.post("/pdp")
+def get_pdp(body: PDPRequest) -> dict[str, Any]:
+    """
+    Compute partial dependence for a feature using the stored best model.
+    Returns {values, average} arrays.
+    """
+    from sklearn.inspection import partial_dependence
+
+    model_data = _best_models.get(body.session_id)
+    if model_data is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No trained model found for this session. Train a model first.",
+        )
+    model = model_data["model"]
+    meta = model_data["meta"]
+    feature_cols = meta["feature_columns"]
+
+    if body.feature_column not in feature_cols:
+        raise _error(f"Feature '{body.feature_column}' was not used in training.")
+
+    df = _get_df(body.session_id)
+    from model_trainer import apply_meta
+    X, _ = apply_meta(df[feature_cols], meta)
+
+    feat_idx = feature_cols.index(body.feature_column)
+
+    try:
+        pdp_result = partial_dependence(model, X, features=[feat_idx], grid_resolution=50, kind="average")
+        values = pdp_result["grid_values"][0].tolist()
+        average = pdp_result["average"][0].tolist()
+        return {
+            "feature": body.feature_column,
+            "values": [round(float(v), 6) for v in values],
+            "average": [round(float(a), 6) for a in average],
+        }
+    except Exception as e:
+        raise _error(f"PDP computation failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: SHAP Values
+# ---------------------------------------------------------------------------
+
+class SHAPRequest(BaseModel):
+    session_id: str
+    max_samples: int = 100
+
+
+@app.post("/shap")
+def get_shap(body: SHAPRequest) -> dict[str, Any]:
+    """
+    Compute feature importance scores for the stored best model.
+    Uses SHAP if installed, otherwise falls back to permutation importance (sklearn).
+    Returns mean |SHAP| (or permutation importance) per feature.
+    """
+    model_data = _best_models.get(body.session_id)
+    if model_data is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No trained model found for this session. Train a model first.",
+        )
+    model = model_data["model"]
+    meta = model_data["meta"]
+    feature_cols = meta["feature_columns"]
+
+    df = _get_df(body.session_id)
+    from model_trainer import apply_meta
+    X, _ = apply_meta(df[feature_cols], meta)
+
+    n = min(body.max_samples, len(X))
+    X_sample = X.iloc[:n]
+
+    # --- Try SHAP first ---
+    try:
+        import shap as _shap
+
+        if hasattr(model, "estimators_") or hasattr(model, "get_booster"):
+            explainer = _shap.TreeExplainer(model)
+            shap_vals = explainer.shap_values(X_sample)
+            if isinstance(shap_vals, list):
+                shap_vals = np.abs(np.array(shap_vals)).mean(axis=0)
+        elif hasattr(model, "coef_"):
+            explainer = _shap.LinearExplainer(model, X_sample)
+            shap_vals = explainer.shap_values(X_sample)
+        else:
+            explainer = _shap.KernelExplainer(model.predict, _shap.sample(X_sample, 50))
+            shap_vals = explainer.shap_values(X_sample)
+
+        shap_arr = np.array(shap_vals)
+        if shap_arr.ndim == 3:
+            shap_arr = shap_arr.mean(axis=0)
+
+        mean_abs = np.abs(shap_arr).mean(axis=0)
+        method = "shap"
+        sample_vals = shap_arr.tolist()
+
+    except ImportError:
+        # --- Fallback: permutation importance ---
+        from sklearn.inspection import permutation_importance
+        from sklearn.metrics import r2_score as _r2, accuracy_score as _acc
+
+        # Need a target to score against; rebuild from the full training set in meta
+        # We don't store y, so we just use the X_sample with a quick refit check.
+        # Best we can do without stored y: use model's built-in importances if available,
+        # else use permutation importance on X_sample with a dummy scoring.
+        if hasattr(model, "feature_importances_"):
+            importances = model.feature_importances_
+            mean_abs = importances
+            method = "model_importance"
+            sample_vals = []
+        elif hasattr(model, "coef_"):
+            coef = model.coef_
+            if coef.ndim > 1:
+                mean_abs = np.abs(coef).mean(axis=0)
+            else:
+                mean_abs = np.abs(coef)
+            method = "coefficients"
+            sample_vals = []
+        else:
+            # Last resort: uniform scores
+            mean_abs = np.ones(len(feature_cols)) / len(feature_cols)
+            method = "uniform"
+            sample_vals = []
+
+    except Exception as e:
+        raise _error(f"Feature importance computation failed: {e}")
+
+    feature_shap = [
+        {"feature": col, "value": round(float(v), 6)}
+        for col, v in zip(feature_cols, mean_abs)
+    ]
+    feature_shap.sort(key=lambda x: x["value"], reverse=True)
+
+    return {
+        "mean_abs_shap": feature_shap,
+        "sample_shap": sample_vals,
+        "n_samples": n,
+        "feature_columns": feature_cols,
+        "method": method,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: RFECV
+# ---------------------------------------------------------------------------
+
+class RFECVRequest(BaseModel):
+    session_id: str
+    target_column: str
+    feature_columns: list[str]
+    problem_type: str
+
+
+@app.post("/rfecv")
+def run_rfecv(body: RFECVRequest) -> dict[str, Any]:
+    """
+    Run RFECV with RF estimator to find optimal feature subset.
+    Returns {optimal_features, ranking, cv_scores}.
+    """
+    from sklearn.feature_selection import RFECV
+
+    df = _get_df(body.session_id)
+    if body.target_column not in df.columns:
+        raise _error(f"Column '{body.target_column}' not found.")
+    missing = [c for c in body.feature_columns if c not in df.columns]
+    if missing:
+        raise _error(f"Columns not found: {missing}")
+    if body.problem_type not in ("regression", "classification"):
+        raise _error("problem_type must be 'regression' or 'classification'.")
+
+    from model_trainer import _prepare, REGRESSION_MODELS, CLASSIFICATION_MODELS
+    try:
+        X, y, _ = _prepare(df, body.target_column, body.feature_columns)
+    except Exception as e:
+        raise _error(f"Preprocessing failed: {e}")
+
+    if body.problem_type == "regression":
+        from sklearn.ensemble import RandomForestRegressor
+        estimator = RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1)
+        scoring = "r2"
+        from sklearn.model_selection import KFold
+        cv = KFold(n_splits=min(5, len(X)), shuffle=True, random_state=42)
+    else:
+        from sklearn.ensemble import RandomForestClassifier
+        estimator = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
+        scoring = "f1_weighted"
+        from sklearn.model_selection import StratifiedKFold
+        cv = StratifiedKFold(n_splits=min(5, len(X)), shuffle=True, random_state=42)
+
+    try:
+        selector = RFECV(estimator=estimator, step=1, cv=cv, scoring=scoring, min_features_to_select=1, n_jobs=-1)
+        selector.fit(X, y)
+        feature_arr = list(X.columns)
+        optimal = [feature_arr[i] for i, s in enumerate(selector.support_) if s]
+        ranking = [{"feature": f, "rank": int(r)} for f, r in zip(feature_arr, selector.ranking_)]
+        ranking.sort(key=lambda x: x["rank"])
+        cv_scores_arr = selector.cv_results_["mean_test_score"] if hasattr(selector, "cv_results_") else []
+        return {
+            "optimal_features": optimal,
+            "n_optimal": len(optimal),
+            "ranking": ranking,
+            "cv_scores": [round(float(s), 6) for s in cv_scores_arr],
+        }
+    except Exception as e:
+        raise _error(f"RFECV failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Hyperparameter Tuning
+# ---------------------------------------------------------------------------
+
+class TuneRequest(BaseModel):
+    session_id: str
+    target_column: str
+    feature_columns: list[str]
+    problem_type: str
+    model_name: str
+
+
+# Param grids per model
+_PARAM_GRIDS: dict[str, dict[str, list]] = {
+    "Random Forest": {
+        "n_estimators": [50, 100, 200],
+        "max_depth": [None, 5, 10, 20],
+        "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4],
+    },
+    "Ridge Regression": {"alpha": [0.01, 0.1, 1.0, 10.0, 100.0]},
+    "LASSO": {"alpha": [0.001, 0.01, 0.1, 1.0, 10.0]},
+    "Logistic Regression": {
+        "C": [0.01, 0.1, 1.0, 10.0, 100.0],
+        "penalty": ["l2"],
+        "max_iter": [1000],
+    },
+    "XGBoost": {
+        "n_estimators": [100, 300],
+        "learning_rate": [0.01, 0.05, 0.1],
+        "max_depth": [3, 6, 9],
+        "subsample": [0.7, 0.9, 1.0],
+    },
+    "LightGBM": {
+        "n_estimators": [100, 300],
+        "learning_rate": [0.01, 0.05, 0.1],
+        "num_leaves": [15, 31, 63],
+        "subsample": [0.7, 0.9, 1.0],
+    },
+}
+
+
+@app.post("/tune")
+def tune_hyperparams(body: TuneRequest) -> dict[str, Any]:
+    """
+    Run RandomizedSearchCV (n_iter=20, cv=3) for the specified model.
+    Returns {best_params, best_score, results}.
+    """
+    from sklearn.model_selection import RandomizedSearchCV
+    from model_trainer import _prepare, REGRESSION_MODELS, CLASSIFICATION_MODELS
+
+    df = _get_df(body.session_id)
+    if body.target_column not in df.columns:
+        raise _error(f"Column '{body.target_column}' not found.")
+    missing = [c for c in body.feature_columns if c not in df.columns]
+    if missing:
+        raise _error(f"Columns not found: {missing}")
+    if body.problem_type not in ("regression", "classification"):
+        raise _error("problem_type must be 'regression' or 'classification'.")
+
+    registry = REGRESSION_MODELS if body.problem_type == "regression" else CLASSIFICATION_MODELS
+    if body.model_name not in registry:
+        raise _error(f"Model '{body.model_name}' not available.")
+
+    param_grid = _PARAM_GRIDS.get(body.model_name)
+    if not param_grid:
+        raise _error(f"No param grid defined for model '{body.model_name}'. Cannot auto-tune.")
+
+    try:
+        X, y, _ = _prepare(df, body.target_column, body.feature_columns)
+    except Exception as e:
+        raise _error(f"Preprocessing failed: {e}")
+
+    scoring = "r2" if body.problem_type == "regression" else "f1_weighted"
+
+    try:
+        search = RandomizedSearchCV(
+            estimator=registry[body.model_name](),
+            param_distributions=param_grid,
+            n_iter=20,
+            cv=3,
+            scoring=scoring,
+            random_state=42,
+            n_jobs=-1,
+            return_train_score=False,
+        )
+        search.fit(X, y)
+        results = []
+        for mean, std, params in zip(
+            search.cv_results_["mean_test_score"],
+            search.cv_results_["std_test_score"],
+            search.cv_results_["params"],
+        ):
+            results.append({
+                "params": params,
+                "score": round(float(mean), 6),
+                "std": round(float(std), 6),
+            })
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return {
+            "best_params": search.best_params_,
+            "best_score": round(float(search.best_score_), 6),
+            "results": results[:10],  # top 10
+            "scoring": scoring,
+        }
+    except Exception as e:
+        raise _error(f"Hyperparameter tuning failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: PCA / t-SNE Dimensionality Reduction
+# ---------------------------------------------------------------------------
+
+class ReduceRequest(BaseModel):
+    session_id: str
+    feature_columns: list[str]
+    target_column: str
+    method: str = "pca"   # "pca" | "tsne"
+    n_components: int = 2
+
+
+@app.post("/reduce")
+def reduce_dimensions(body: ReduceRequest) -> dict[str, Any]:
+    """
+    Reduce features to 2D using PCA or t-SNE.
+    Returns {points: [{x, y, target}], explained_variance (PCA only)}.
+    """
+    from model_trainer import _prepare
+
+    df = _get_df(body.session_id)
+    if body.target_column not in df.columns:
+        raise _error(f"Column '{body.target_column}' not found.")
+    missing = [c for c in body.feature_columns if c not in df.columns]
+    if missing:
+        raise _error(f"Columns not found: {missing}")
+    if body.method not in ("pca", "tsne"):
+        raise _error("method must be 'pca' or 'tsne'.")
+    if body.n_components != 2:
+        raise _error("Only n_components=2 is supported.")
+
+    try:
+        X, y, _ = _prepare(df, body.target_column, body.feature_columns)
+    except Exception as e:
+        raise _error(f"Preprocessing failed: {e}")
+
+    # Sample up to 2000 points for t-SNE performance
+    if body.method == "tsne" and len(X) > 2000:
+        idx = np.random.default_rng(42).integers(0, len(X), size=2000)
+        X = X.iloc[idx]
+        y = y.iloc[idx]
+
+    from sklearn.preprocessing import StandardScaler
+    X_scaled = StandardScaler().fit_transform(X)
+
+    explained_variance = None
+    try:
+        if body.method == "pca":
+            from sklearn.decomposition import PCA
+            reducer = PCA(n_components=2, random_state=42)
+            coords = reducer.fit_transform(X_scaled)
+            explained_variance = [round(float(v), 6) for v in reducer.explained_variance_ratio_]
+        else:
+            from sklearn.manifold import TSNE
+            reducer = TSNE(n_components=2, random_state=42, perplexity=min(30, len(X) - 1))
+            coords = reducer.fit_transform(X_scaled)
+    except Exception as e:
+        raise _error(f"Dimensionality reduction failed: {e}")
+
+    target_vals = y.tolist()
+    points = [
+        {"x": round(float(coords[i, 0]), 4), "y": round(float(coords[i, 1]), 4), "target": float(target_vals[i])}
+        for i in range(len(coords))
+    ]
+
+    return {
+        "method": body.method,
+        "points": points,
+        "explained_variance": explained_variance,
+        "n_points": len(points),
+        "feature_columns": body.feature_columns,
+    }
