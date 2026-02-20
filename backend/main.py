@@ -158,6 +158,24 @@ class DropFeatureRequest(BaseModel):
     column: str
 
 
+class TransformFeatureRequest(BaseModel):
+    session_id: str
+    transform: str  # see VALID_TRANSFORMS below
+    column: str | None = None            # single-column transforms
+    columns: list[str] | None = None     # multi-column transforms (polynomial)
+    new_name: str | None = None          # custom output column name
+    # Transform-specific params
+    n_bins: int = 5                      # for "binning"
+    clip_lower: float | None = None      # for "clip_outliers" (percentile 0-100)
+    clip_upper: float | None = None      # for "clip_outliers" (percentile 0-100)
+
+
+VALID_TRANSFORMS = (
+    "log1p", "sqrt", "square", "reciprocal",
+    "power_transform", "binning", "clip_outliers",
+    "polynomial",
+)
+
 
 # ---------------------------------------------------------------------------
 # Endpoints -- Health
@@ -532,6 +550,153 @@ def drop_feature(
     _sessions[body.session_id] = df
 
     return {"success": True, "dropped": body.column, "columns": list(df.columns)}
+
+
+# ---------------------------------------------------------------------------
+# Endpoints -- Advanced Feature Engineering (Transforms)
+# ---------------------------------------------------------------------------
+
+@app.post("/transform-feature")
+def transform_feature(
+    body: TransformFeatureRequest,
+) -> dict[str, Any]:
+    """
+    Apply a mathematical or statistical transform to create new feature(s).
+
+    Supported transforms:
+      Single-column (requires 'column'):
+        log1p        - log(1 + x), works for non-negative data
+        sqrt         - sqrt(x), works for non-negative data
+        square       - x^2
+        reciprocal   - 1/x (zeros become NaN)
+        power_transform - Yeo-Johnson power transform (handles negatives)
+        binning      - Quantile-based binning into n_bins categories
+        clip_outliers - Winsorize: clip values outside [lower, upper] percentiles
+
+      Multi-column (requires 'columns', list of 2+ numeric columns):
+        polynomial   - Degree-2 polynomial features: A^2, B^2, A*B for each pair
+    """
+    df = _get_df(body.session_id)
+
+    if body.transform not in VALID_TRANSFORMS:
+        raise _error(
+            f"Unknown transform '{body.transform}'. "
+            f"Valid: {', '.join(VALID_TRANSFORMS)}"
+        )
+
+    created_columns: list[str] = []
+
+    # --- Single-column transforms ---
+    if body.transform in ("log1p", "sqrt", "square", "reciprocal", "power_transform", "binning", "clip_outliers"):
+        if not body.column:
+            raise _error(f"Transform '{body.transform}' requires a 'column' parameter.")
+        if body.column not in df.columns:
+            raise _error(f"Column '{body.column}' not found in dataset.")
+        if not pd.api.types.is_numeric_dtype(df[body.column]):
+            raise _error(f"Column '{body.column}' must be numeric for transform '{body.transform}'.")
+
+        series = df[body.column].copy()
+
+        if body.transform == "log1p":
+            if (series.dropna() < 0).any():
+                raise _error(
+                    f"Column '{body.column}' contains negative values. "
+                    "log1p requires non-negative data. Consider clip_outliers or power_transform instead."
+                )
+            new_col_name = body.new_name or f"{body.column}_log1p"
+            result_series = np.log1p(series)
+
+        elif body.transform == "sqrt":
+            if (series.dropna() < 0).any():
+                raise _error(
+                    f"Column '{body.column}' contains negative values. "
+                    "sqrt requires non-negative data. Consider power_transform instead."
+                )
+            new_col_name = body.new_name or f"{body.column}_sqrt"
+            result_series = np.sqrt(series)
+
+        elif body.transform == "square":
+            new_col_name = body.new_name or f"{body.column}_sq"
+            result_series = series ** 2
+
+        elif body.transform == "reciprocal":
+            new_col_name = body.new_name or f"{body.column}_inv"
+            safe = series.replace(0, float("nan"))
+            result_series = 1.0 / safe
+
+        elif body.transform == "power_transform":
+            from sklearn.preprocessing import PowerTransformer
+            new_col_name = body.new_name or f"{body.column}_yj"
+            pt = PowerTransformer(method="yeo-johnson", standardize=False)
+            filled = series.fillna(series.median()).values.reshape(-1, 1)
+            transformed = pt.fit_transform(filled).flatten()
+            result_series = pd.Series(transformed, index=series.index, name=new_col_name)
+            # Restore NaN positions
+            result_series[series.isna()] = float("nan")
+
+        elif body.transform == "binning":
+            if body.n_bins < 2 or body.n_bins > 20:
+                raise _error("n_bins must be between 2 and 20.")
+            new_col_name = body.new_name or f"{body.column}_bin{body.n_bins}"
+            try:
+                result_series = pd.qcut(series, q=body.n_bins, labels=False, duplicates="drop")
+            except ValueError:
+                # Fallback to equal-width if quantile fails (too few unique values)
+                result_series = pd.cut(series, bins=body.n_bins, labels=False)
+
+        elif body.transform == "clip_outliers":
+            lower_pct = body.clip_lower if body.clip_lower is not None else 1.0
+            upper_pct = body.clip_upper if body.clip_upper is not None else 99.0
+            if not (0 <= lower_pct < upper_pct <= 100):
+                raise _error("clip_lower must be < clip_upper, both in [0, 100].")
+            new_col_name = body.new_name or f"{body.column}_clipped"
+            lo_val = float(np.nanpercentile(series, lower_pct))
+            hi_val = float(np.nanpercentile(series, upper_pct))
+            result_series = series.clip(lower=lo_val, upper=hi_val)
+
+        else:
+            raise _error(f"Unhandled transform: {body.transform}")
+
+        if new_col_name in df.columns:
+            raise _error(f"Column '{new_col_name}' already exists. Provide a different new_name.")
+
+        df[new_col_name] = result_series
+        created_columns.append(new_col_name)
+
+    # --- Multi-column transforms ---
+    elif body.transform == "polynomial":
+        cols = body.columns or []
+        if len(cols) < 2:
+            raise _error("Polynomial transform requires at least 2 columns.")
+        for c in cols:
+            if c not in df.columns:
+                raise _error(f"Column '{c}' not found in dataset.")
+            if not pd.api.types.is_numeric_dtype(df[c]):
+                raise _error(f"Column '{c}' must be numeric for polynomial features.")
+
+        # Generate squared terms and cross terms
+        for c in cols:
+            sq_name = f"{c}_sq"
+            if sq_name not in df.columns:
+                df[sq_name] = df[c] ** 2
+                created_columns.append(sq_name)
+
+        for i in range(len(cols)):
+            for j in range(i + 1, len(cols)):
+                cross_name = f"{cols[i]}_x_{cols[j]}"
+                if cross_name not in df.columns:
+                    df[cross_name] = df[cols[i]] * df[cols[j]]
+                    created_columns.append(cross_name)
+
+    _sessions[body.session_id] = df
+
+    return {
+        "success": True,
+        "transform": body.transform,
+        "created_columns": created_columns,
+        "columns": list(df.columns),
+        "n_columns": len(df.columns),
+    }
 
 
 @app.post("/train")
@@ -1028,17 +1193,54 @@ def get_pdp(body: PDPRequest) -> dict[str, Any]:
 # Phase 4: SHAP Values
 # ---------------------------------------------------------------------------
 
+# Model types used for explainer selection
+_TREE_MODEL_TYPES: tuple[str, ...] = (
+    "RandomForestRegressor", "RandomForestClassifier",
+    "GradientBoostingRegressor", "GradientBoostingClassifier",
+    "ExtraTreesRegressor", "ExtraTreesClassifier",
+    "XGBRegressor", "XGBClassifier",
+    "LGBMRegressor", "LGBMClassifier",
+    "CatBoostRegressor", "CatBoostClassifier",
+)
+
+_LINEAR_MODEL_TYPES: tuple[str, ...] = (
+    "LinearRegression", "Ridge", "Lasso",
+    "LogisticRegression",
+)
+
+
+def _get_model_class_name(model: Any) -> str:
+    """Return the class name of the underlying model, unwrapping pipelines."""
+    return type(model).__name__
+
+
+def _is_tree_model(model: Any) -> bool:
+    return _get_model_class_name(model) in _TREE_MODEL_TYPES
+
+
+def _is_linear_model(model: Any) -> bool:
+    return _get_model_class_name(model) in _LINEAR_MODEL_TYPES
+
+
 class SHAPRequest(BaseModel):
     session_id: str
-    max_samples: int = 100
+    max_samples: int = 500
 
 
 @app.post("/shap")
 def get_shap(body: SHAPRequest) -> dict[str, Any]:
     """
-    Compute feature importance scores for the stored best model.
-    Uses SHAP if installed, otherwise falls back to permutation importance (sklearn).
-    Returns mean |SHAP| (or permutation importance) per feature.
+    Compute SHAP values for the stored best model.
+
+    Explainer selection:
+      - TreeExplainer   for tree-based models (RF, XGBoost, LightGBM, CatBoost, etc.)
+      - LinearExplainer for linear models (Ridge, Lasso, LinearRegression, LogisticRegression)
+      - KernelExplainer as fallback (sampled to max 100 background rows for speed)
+
+    Returns:
+      - mean_abs_shap: global importance per feature (mean |SHAP value|)
+      - sample_shap:   per-sample SHAP values (top 50 rows) for beeswarm/waterfall
+      - feature_columns, n_samples, method
     """
     model_data = _best_models.get(body.session_id)
     if model_data is None:
@@ -1054,64 +1256,83 @@ def get_shap(body: SHAPRequest) -> dict[str, Any]:
     from model_trainer import apply_meta
     X, _ = apply_meta(df[feature_cols], meta)
 
-    n = min(body.max_samples, len(X))
-    X_sample = X.iloc[:n]
-
-    # --- Try SHAP first ---
+    # --- Try SHAP library ---
     try:
         import shap as _shap
 
-        if hasattr(model, "estimators_") or hasattr(model, "get_booster"):
+        if _is_tree_model(model):
+            # TreeExplainer is fast -- use all available data (up to max_samples)
+            n = min(body.max_samples, len(X))
+            X_sample = X.iloc[:n]
             explainer = _shap.TreeExplainer(model)
-            shap_vals = explainer.shap_values(X_sample)
-            if isinstance(shap_vals, list):
-                shap_vals = np.abs(np.array(shap_vals)).mean(axis=0)
-        elif hasattr(model, "coef_"):
+            shap_values = explainer.shap_values(X_sample)
+        elif _is_linear_model(model):
+            n = min(body.max_samples, len(X))
+            X_sample = X.iloc[:n]
             explainer = _shap.LinearExplainer(model, X_sample)
-            shap_vals = explainer.shap_values(X_sample)
+            shap_values = explainer.shap_values(X_sample)
         else:
-            explainer = _shap.KernelExplainer(model.predict, _shap.sample(X_sample, 50))
-            shap_vals = explainer.shap_values(X_sample)
+            # KernelExplainer fallback -- slow, so limit both background and explain sets
+            n = min(100, len(X))
+            X_sample = X.iloc[:n]
+            background = _shap.sample(X, min(50, len(X)))
+            explainer = _shap.KernelExplainer(model.predict, background)
+            shap_values = explainer.shap_values(X_sample, nsamples=200)
 
-        shap_arr = np.array(shap_vals)
+        # Normalize shape: shap_values can be:
+        #   - ndarray (n_samples, n_features) for regression / binary
+        #   - list of ndarrays for multi-class classification
+        #   - Explanation object (shap >= 0.40)
+        if hasattr(shap_values, "values"):
+            # shap.Explanation object
+            shap_arr = np.array(shap_values.values)
+        elif isinstance(shap_values, list):
+            # Multi-class: list of arrays, each (n_samples, n_features)
+            # Average absolute values across classes to get a single (n_samples, n_features)
+            stacked = np.array(shap_values)  # (n_classes, n_samples, n_features)
+            shap_arr = np.abs(stacked).mean(axis=0)  # (n_samples, n_features)
+        else:
+            shap_arr = np.array(shap_values)
+
+        # Handle 3D arrays from some explainers (n_classes, n_samples, n_features)
         if shap_arr.ndim == 3:
-            shap_arr = shap_arr.mean(axis=0)
+            shap_arr = np.abs(shap_arr).mean(axis=0)
 
+        # Global importance: mean |SHAP| per feature
         mean_abs = np.abs(shap_arr).mean(axis=0)
+
+        # Per-sample values: return top 50 rows for beeswarm/waterfall charts
+        n_sample_rows = min(50, shap_arr.shape[0])
+        sample_shap = shap_arr[:n_sample_rows].tolist()
+
+        # Feature values for the same sample rows (needed for beeswarm coloring)
+        sample_feature_values = X_sample.iloc[:n_sample_rows].values.tolist()
+
         method = "shap"
-        sample_vals = shap_arr.tolist()
 
     except ImportError:
-        # --- Fallback: permutation importance ---
-        from sklearn.inspection import permutation_importance
-        from sklearn.metrics import r2_score as _r2, accuracy_score as _acc
+        # SHAP not installed -- fall back to model-native importance
+        logger.warning("shap library not installed; falling back to model-native importance.")
+        n = len(X)
+        sample_shap = []
+        sample_feature_values = []
 
-        # Need a target to score against; rebuild from the full training set in meta
-        # We don't store y, so we just use the X_sample with a quick refit check.
-        # Best we can do without stored y: use model's built-in importances if available,
-        # else use permutation importance on X_sample with a dummy scoring.
         if hasattr(model, "feature_importances_"):
-            importances = model.feature_importances_
-            mean_abs = importances
+            mean_abs = model.feature_importances_
             method = "model_importance"
-            sample_vals = []
         elif hasattr(model, "coef_"):
             coef = model.coef_
-            if coef.ndim > 1:
-                mean_abs = np.abs(coef).mean(axis=0)
-            else:
-                mean_abs = np.abs(coef)
+            mean_abs = np.abs(coef).mean(axis=0) if coef.ndim > 1 else np.abs(coef)
             method = "coefficients"
-            sample_vals = []
         else:
-            # Last resort: uniform scores
             mean_abs = np.ones(len(feature_cols)) / len(feature_cols)
             method = "uniform"
-            sample_vals = []
 
     except Exception as e:
-        raise _error(f"Feature importance computation failed: {e}")
+        logger.error("SHAP computation failed: %s", e, exc_info=True)
+        raise _error(f"SHAP computation failed: {e}")
 
+    # Build sorted global importance list
     feature_shap = [
         {"feature": col, "value": round(float(v), 6)}
         for col, v in zip(feature_cols, mean_abs)
@@ -1120,7 +1341,8 @@ def get_shap(body: SHAPRequest) -> dict[str, Any]:
 
     return {
         "mean_abs_shap": feature_shap,
-        "sample_shap": sample_vals,
+        "sample_shap": sample_shap,
+        "sample_feature_values": sample_feature_values,
         "n_samples": n,
         "feature_columns": feature_cols,
         "method": method,

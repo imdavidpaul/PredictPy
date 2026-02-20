@@ -15,27 +15,27 @@ const geistMono = Geist_Mono({
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://predictpy.com"
 
 export const metadata: Metadata = {
-  title: "predictpy — ML Feature Selection",
+  title: "PredictPy — ML Feature Selection",
   description: "Upload a dataset and predict the best features using intelligent ML analysis. Built for data scientists and ML engineers.",
   metadataBase: new URL(SITE_URL),
   openGraph: {
-    title: "predictpy — ML Feature Selection",
+    title: "PredictPy — ML Feature Selection",
     description: "Upload any CSV or Excel dataset. Get instant feature rankings, scatter plots, and train ML models in seconds.",
     url: SITE_URL,
-    siteName: "predictpy",
+    siteName: "PredictPy",
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "predictpy — ML Feature Selection",
+        alt: "PredictPy — ML Feature Selection",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "predictpy — ML Feature Selection",
+    title: "PredictPy — ML Feature Selection",
     description: "Upload any CSV or Excel dataset. Get instant feature rankings, scatter plots, and train ML models in seconds.",
     images: ["/og-image.png"],
   },

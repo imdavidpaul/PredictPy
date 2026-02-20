@@ -104,8 +104,8 @@ const TOOLTIP_STYLE = {
 
 const TOOLTIP_ITEM_STYLE = { color: "#e4e4e7" }
 const TOOLTIP_LABEL_STYLE = { color: "#a1a1aa", marginBottom: 4 }
-const AXIS_TICK = { fill: "#71717a", fontSize: 9 }
-const AXIS_LABEL_FILL = "#71717a"
+const AXIS_TICK = { fill: "#ffffff", fontSize: 9 }
+const AXIS_LABEL_FILL = "#ffffff"
 
 function HistCard({ state }: { state: FeatureHistState }) {
   const { column, data, loading, error } = state

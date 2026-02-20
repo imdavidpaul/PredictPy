@@ -61,14 +61,14 @@ function LegendBar() {
       <div className="h-3 rounded-full w-64" style={{ background: gradient }} />
       <div className="flex justify-between w-64">
         {stops.map(({ label }) => (
-          <span key={label} className="text-[10px] text-zinc-600 font-mono">{label}</span>
+          <span key={label} className="text-[10px] text-zinc-400 font-mono">{label}</span>
         ))}
       </div>
       <div className="flex items-center gap-4 mt-0.5">
         <span className="flex items-center gap-1 text-[11px] text-rose-400">
           <TrendingDown className="w-3 h-3" /> Negative
         </span>
-        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+        <span className="flex items-center gap-1 text-[11px] text-zinc-400">
           <Minus className="w-3 h-3" /> None
         </span>
         <span className="flex items-center gap-1 text-[11px] text-violet-400">
@@ -249,7 +249,7 @@ export default function CorrelationHeatmap() {
               >
                 <span
                   className={`text-[10px] font-mono whitespace-nowrap transition-colors duration-150 ${
-                    hovered?.col === col ? "text-violet-300 font-semibold" : "text-zinc-500"
+                    hovered?.col === col ? "text-violet-300 font-semibold" : "text-zinc-300"
                   }`}
                   style={{
                     writingMode: "vertical-rl",
@@ -272,7 +272,7 @@ export default function CorrelationHeatmap() {
               <div
                 style={{ width: 120 }}
                 className={`pr-3 text-right text-[10px] font-mono whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-150 ${
-                  hovered?.row === row ? "text-violet-300 font-semibold" : "text-zinc-500"
+                  hovered?.row === row ? "text-violet-300 font-semibold" : "text-zinc-300"
                 }`}
               >
                 {row}

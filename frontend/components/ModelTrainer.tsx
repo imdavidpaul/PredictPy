@@ -272,27 +272,30 @@ export default function ModelTrainer() {
                   <Brain className="w-3 h-3 text-violet-400" />
                   {m}
                 </span>
-                <button
-                  onClick={() => handleTune(m)}
-                  disabled={tuningModel === m || selectedFeatureColumns.length === 0}
-                  className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors disabled:opacity-40"
-                  title="Auto-tune hyperparameters"
-                >
-                  {tuningModel === m ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-3 h-3" />
-                  )}
-                  Auto-Tune
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleTune(m)}
+                    disabled={tuningModel === m || selectedFeatureColumns.length === 0}
+                    className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors disabled:opacity-40"
+                    title="Auto-tune hyperparameters"
+                  >
+                    {tuningModel === m ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-3 h-3" />
+                    )}
+                    Auto-Tune
+                  </button>
                   {tuneResults[m] && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setTuneDrawer(tuneDrawer === m ? null : m) }}
-                      className="ml-1"
+                      className="ml-1 text-violet-400 hover:text-violet-300 transition-colors"
+                      aria-label={tuneDrawer === m ? "Close results" : "Show results"}
                     >
                       {tuneDrawer === m ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
                   )}
-                </button>
+                </div>
               </div>
               {tuneDrawer === m && tuneResults[m] && (
                 <div className="ml-3 rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-xs space-y-1">

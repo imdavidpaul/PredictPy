@@ -12,11 +12,15 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  LineChart,
+  Legend,
+  ReferenceLine,
 } from "recharts"
-import { useState } from "react"
-import { Download, Trophy, Star, AlertTriangle } from "lucide-react"
+import { useState, useEffect, useMemo } from "react"
+import { Download, Trophy, Star, AlertTriangle, Loader2, Sparkles } from "lucide-react"
 import { useStore } from "@/store/useStore"
-import type { ModelResult } from "@/lib/types"
+import { getSHAP } from "@/lib/api"
+import type { ModelResult, SHAPResponse, RocCurveEntry } from "@/lib/types"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,7 +34,7 @@ const RECHARTS_TOOLTIP_STYLE = {
   fontSize: 12,
 }
 
-const AXIS_TICK_STYLE = { fill: "#71717a", fontSize: 11 }
+const AXIS_TICK_STYLE = { fill: "#ffffff", fontSize: 11 }
 
 function downloadModel(base64: string, modelName: string): string | null {
   try {
@@ -307,6 +311,448 @@ function PredictionsChart({ model }: { model: ModelResult }) {
 }
 
 // ---------------------------------------------------------------------------
+// SHAP Feature Importance Chart
+// ---------------------------------------------------------------------------
+
+function SHAPImportanceChart({ sessionId }: { sessionId: string }) {
+  const [shapData, setShapData] = useState<SHAPResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasFetched, setHasFetched] = useState(false)
+
+  const fetchShap = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await getSHAP({ session_id: sessionId, max_samples: 500 })
+      setShapData(res)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to compute SHAP values.")
+    } finally {
+      setLoading(false)
+      setHasFetched(true)
+    }
+  }
+
+  // Auto-fetch on mount
+  useEffect(() => {
+    if (!hasFetched) {
+      fetchShap()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
+  if (loading) {
+    return (
+      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+        <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-4 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-violet-400" />
+          SHAP Feature Importance
+        </h3>
+        <div className="flex items-center justify-center py-12 text-zinc-500 text-sm gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Computing SHAP values...
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+        <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-4 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-violet-400" />
+          SHAP Feature Importance
+        </h3>
+        <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+          {error}
+        </p>
+      </div>
+    )
+  }
+
+  if (!shapData || shapData.mean_abs_shap.length === 0) return null
+
+  const top15 = shapData.mean_abs_shap.slice(0, 15)
+  const chartHeight = Math.max(top15.length * 36 + 20, 120)
+
+  // Violet gradient: top features get brighter violet
+  const getBarColor = (index: number): string => {
+    if (index === 0) return "#a78bfa"  // violet-400
+    if (index < 3) return "#8b5cf6"    // violet-500
+    if (index < 6) return "#7c3aed"    // violet-600
+    return "#6d28d9"                    // violet-700
+  }
+
+  const methodLabel = shapData.method === "shap"
+    ? "SHAP"
+    : shapData.method === "model_importance"
+      ? "Model Importance"
+      : shapData.method === "coefficients"
+        ? "Coefficient Magnitude"
+        : "Importance"
+
+  return (
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-violet-400" />
+            {methodLabel} Feature Importance
+          </h3>
+          <p className="text-[10px] text-zinc-600 mt-1">
+            Higher = feature has larger impact on model output
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {shapData.method === "shap" && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
+              True SHAP
+            </span>
+          )}
+          <span className="text-[10px] text-zinc-600">
+            {shapData.n_samples} samples
+          </span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <BarChart
+          data={top15}
+          layout="vertical"
+          margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
+        >
+          <XAxis
+            type="number"
+            tick={AXIS_TICK_STYLE}
+            tickFormatter={(v: number) => v.toFixed(4)}
+            label={{
+              value: `mean |${methodLabel}|`,
+              position: "insideBottom",
+              offset: -2,
+              fill: "#71717a",
+              fontSize: 10,
+            }}
+          />
+          <YAxis
+            type="category"
+            dataKey="feature"
+            tick={{ ...AXIS_TICK_STYLE, fontFamily: "monospace" }}
+            width={140}
+          />
+          <Tooltip
+            contentStyle={RECHARTS_TOOLTIP_STYLE}
+            itemStyle={{ color: "#e4e4e7" }}
+            labelStyle={{ color: "#a1a1aa", marginBottom: 4 }}
+            formatter={(v: number | undefined) => [
+              (v ?? 0).toFixed(6),
+              `mean |${methodLabel}|`,
+            ]}
+          />
+          <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+            {top15.map((_, i) => (
+              <Cell key={i} fill={getBarColor(i)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Confusion Matrix Heatmap (classification only)
+// ---------------------------------------------------------------------------
+
+/** Violet shades for diagonal (correct), zinc shades for off-diagonal (errors) */
+function cellColor(value: number, maxVal: number, isDiagonal: boolean): string {
+  if (maxVal === 0) return isDiagonal ? "rgba(139, 92, 246, 0.1)" : "rgba(113, 113, 122, 0.1)"
+  const ratio = Math.min(value / maxVal, 1)
+  if (isDiagonal) {
+    // violet-500 at full intensity
+    const alpha = 0.1 + ratio * 0.7
+    return `rgba(139, 92, 246, ${alpha.toFixed(2)})`
+  }
+  // zinc-500 at full intensity for errors
+  const alpha = 0.05 + ratio * 0.5
+  return `rgba(113, 113, 122, ${alpha.toFixed(2)})`
+}
+
+function ConfusionMatrixChart({
+  matrix,
+  labels,
+}: {
+  matrix: number[][]
+  labels: string[]
+}) {
+  const maxVal = Math.max(...matrix.flat(), 1)
+
+  // Row sums for percentage calculation (% of true class)
+  const rowSums = matrix.map((row) => row.reduce((a, b) => a + b, 0))
+
+  return (
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+      <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-4">
+        Confusion Matrix
+      </h3>
+
+      <div className="overflow-x-auto">
+        {/* Column header: Predicted */}
+        <div className="flex items-center justify-center mb-2">
+          <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">
+            Predicted
+          </span>
+        </div>
+
+        <div className="flex">
+          {/* Row header: Actual (rotated) */}
+          <div className="flex items-center justify-center mr-2">
+            <span
+              className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium"
+              style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+            >
+              Actual
+            </span>
+          </div>
+
+          <div className="flex-1">
+            {/* Column labels */}
+            <div
+              className="grid gap-1 mb-1"
+              style={{
+                gridTemplateColumns: `80px repeat(${labels.length}, minmax(60px, 1fr))`,
+              }}
+            >
+              <div /> {/* spacer */}
+              {labels.map((label) => (
+                <div
+                  key={`col-${label}`}
+                  className="text-center text-[10px] text-zinc-400 font-mono truncate px-1"
+                  title={label}
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            {/* Matrix rows */}
+            {matrix.map((row, rowIdx) => (
+              <div
+                key={`row-${rowIdx}`}
+                className="grid gap-1 mb-1"
+                style={{
+                  gridTemplateColumns: `80px repeat(${labels.length}, minmax(60px, 1fr))`,
+                }}
+              >
+                {/* Row label */}
+                <div
+                  className="flex items-center justify-end pr-2 text-[10px] text-zinc-400 font-mono truncate"
+                  title={labels[rowIdx]}
+                >
+                  {labels[rowIdx]}
+                </div>
+
+                {/* Cells */}
+                {row.map((count, colIdx) => {
+                  const isDiag = rowIdx === colIdx
+                  const pct =
+                    rowSums[rowIdx] > 0
+                      ? ((count / rowSums[rowIdx]) * 100).toFixed(1)
+                      : "0.0"
+                  return (
+                    <div
+                      key={`cell-${rowIdx}-${colIdx}`}
+                      className="flex flex-col items-center justify-center rounded-lg py-2.5 px-1 min-h-[52px] transition-colors"
+                      style={{
+                        backgroundColor: cellColor(count, maxVal, isDiag),
+                        border: isDiag
+                          ? "1px solid rgba(139, 92, 246, 0.3)"
+                          : "1px solid rgba(63, 63, 70, 0.3)",
+                      }}
+                    >
+                      <span
+                        className={`text-sm font-bold leading-tight ${
+                          isDiag ? "text-violet-200" : "text-zinc-300"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 leading-tight mt-0.5">
+                        {pct}%
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-xs text-zinc-600 mt-3 text-center">
+        Rows = actual class, columns = predicted class. Percentages are of each true class.
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ROC Curve Chart (classification only)
+// ---------------------------------------------------------------------------
+
+const ROC_COLORS = [
+  "#8b5cf6", // violet-500
+  "#06b6d4", // cyan-500
+  "#f59e0b", // amber-500
+  "#10b981", // emerald-500
+  "#f43f5e", // rose-500
+  "#6366f1", // indigo-500
+  "#ec4899", // pink-500
+  "#14b8a6", // teal-500
+]
+
+function ROCCurveChart({ curves }: { curves: RocCurveEntry[] }) {
+  // Merge all curves into a single dataset for Recharts.
+  // Each data point: { fpr, tpr_Class0, tpr_Class1, ... , diagonal }
+  const chartData = useMemo(() => {
+    // Build a union of all FPR values across curves + add 0 and 1
+    const fprSet = new Set<number>([0, 1])
+    for (const curve of curves) {
+      for (const f of curve.fpr) fprSet.add(f)
+    }
+    const fprAll = Array.from(fprSet).sort((a, b) => a - b)
+
+    return fprAll.map((fpr) => {
+      const point: Record<string, number> = { fpr, diagonal: fpr }
+      for (const curve of curves) {
+        // Find the closest FPR index in this curve via binary search
+        const key = `tpr_${curve.label}`
+        let bestIdx = 0
+        let bestDist = Infinity
+        for (let i = 0; i < curve.fpr.length; i++) {
+          const dist = Math.abs(curve.fpr[i] - fpr)
+          if (dist < bestDist) {
+            bestDist = dist
+            bestIdx = i
+          }
+        }
+        // Only include if reasonably close (within 0.02)
+        if (bestDist < 0.02) {
+          point[key] = curve.tpr[bestIdx]
+        }
+      }
+      return point
+    })
+  }, [curves])
+
+  const isBinary = curves.length === 1
+
+  return (
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide">
+            ROC Curve
+          </h3>
+          {isBinary && (
+            <p className="text-xs text-violet-400 mt-1 font-mono">
+              AUC = {curves[0].auc.toFixed(4)}
+            </p>
+          )}
+        </div>
+        {!isBinary && (
+          <div className="flex flex-wrap gap-2">
+            {curves.map((c, i) => (
+              <span
+                key={c.label}
+                className="text-[10px] px-1.5 py-0.5 rounded-full border font-mono"
+                style={{
+                  color: ROC_COLORS[i % ROC_COLORS.length],
+                  borderColor: `${ROC_COLORS[i % ROC_COLORS.length]}44`,
+                  backgroundColor: `${ROC_COLORS[i % ROC_COLORS.length]}11`,
+                }}
+              >
+                {c.label}: {c.auc.toFixed(3)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 24 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+          <XAxis
+            dataKey="fpr"
+            type="number"
+            domain={[0, 1]}
+            tick={AXIS_TICK_STYLE}
+            tickFormatter={(v: number) => v.toFixed(1)}
+            label={{
+              value: "False Positive Rate (FPR)",
+              position: "insideBottom",
+              offset: -16,
+              fill: "#71717a",
+              fontSize: 11,
+            }}
+          />
+          <YAxis
+            type="number"
+            domain={[0, 1]}
+            tick={AXIS_TICK_STYLE}
+            tickFormatter={(v: number) => v.toFixed(1)}
+            label={{
+              value: "True Positive Rate (TPR)",
+              angle: -90,
+              position: "insideLeft",
+              fill: "#71717a",
+              fontSize: 11,
+            }}
+          />
+          <Tooltip
+            contentStyle={RECHARTS_TOOLTIP_STYLE}
+            itemStyle={{ color: "#e4e4e7" }}
+            labelStyle={{ color: "#a1a1aa", marginBottom: 4 }}
+            labelFormatter={(v: number) => `FPR: ${v.toFixed(4)}`}
+            formatter={(v: number | undefined, name: string) => {
+              if (name === "diagonal") return [null, null]
+              return [(v ?? 0).toFixed(4), name.replace("tpr_", "TPR ")]
+            }}
+          />
+
+          {/* Diagonal reference line (random classifier) */}
+          <Line
+            dataKey="diagonal"
+            stroke="#52525b"
+            strokeDasharray="6 4"
+            strokeWidth={1}
+            dot={false}
+            name="diagonal"
+            legendType="none"
+          />
+
+          {/* ROC curves */}
+          {curves.map((curve, i) => (
+            <Line
+              key={curve.label}
+              dataKey={`tpr_${curve.label}`}
+              stroke={ROC_COLORS[i % ROC_COLORS.length]}
+              strokeWidth={2}
+              dot={false}
+              name={`tpr_${curve.label}`}
+              connectNulls
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+
+      <p className="text-xs text-zinc-600 mt-2 text-center">
+        Curves above the diagonal indicate better-than-random classification
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Best Model Summary Card
 // ---------------------------------------------------------------------------
 
@@ -372,7 +818,7 @@ function BestModelBanner({
 // ---------------------------------------------------------------------------
 
 export default function ModelResults() {
-  const { modelResult } = useStore()
+  const { modelResult, sessionId } = useStore()
   const [downloadError, setDownloadError] = useState<string | null>(null)
 
   if (!modelResult) return null
@@ -427,6 +873,37 @@ export default function ModelResults() {
         <ImportanceChart model={bestModelData} />
         <PredictionsChart model={bestModelData} />
       </div>
+
+      {/* Classification-only: Confusion Matrix + ROC Curve */}
+      {problem_type === "classification" && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {bestModelData.confusion_matrix &&
+            bestModelData.class_labels &&
+            bestModelData.confusion_matrix.length > 0 && (
+              <ConfusionMatrixChart
+                matrix={bestModelData.confusion_matrix}
+                labels={bestModelData.class_labels}
+              />
+            )}
+          {bestModelData.roc_curve_data &&
+            bestModelData.roc_curve_data.length > 0 ? (
+              <ROCCurveChart curves={bestModelData.roc_curve_data} />
+            ) : (
+              problem_type === "classification" &&
+              bestModelData.confusion_matrix &&
+              !bestModelData.roc_curve_data && (
+                <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 flex items-center justify-center">
+                  <p className="text-sm text-zinc-500">
+                    ROC curve not available -- the best model does not support probability estimates.
+                  </p>
+                </div>
+              )
+            )}
+        </div>
+      )}
+
+      {/* SHAP Feature Importance */}
+      {sessionId && <SHAPImportanceChart sessionId={sessionId} />}
     </div>
   )
 }

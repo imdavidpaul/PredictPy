@@ -3,8 +3,8 @@ import { ArrowLeft } from "lucide-react"
 import PredictpyLogo from "@/components/PredictpyLogo"
 
 export const metadata = {
-  title: "Privacy Policy — predictpy",
-  description: "How predictpy collects, uses, and protects your data.",
+  title: "Privacy Policy — PredictPy",
+  description: "How PredictPy collects, uses, and protects your data.",
 }
 
 const sections = [
@@ -37,7 +37,7 @@ const sections = [
   {
     title: "Cookies & Local Storage",
     content: [
-      "predictpy uses browser localStorage to store your JWT authentication token. This token is used to authenticate API requests.",
+      "PredictPy uses browser localStorage to store your JWT authentication token. This token is used to authenticate API requests.",
       "We do not use third-party tracking cookies or advertising cookies.",
       "NextAuth.js may set session cookies for OAuth login flows. These are cleared when you sign out.",
     ],
@@ -56,14 +56,14 @@ const sections = [
       "All passwords are hashed with bcrypt before storage.",
       "Authentication tokens are signed JWTs with a 7-day expiry.",
       "We recommend using a strong, unique password and enabling two-factor authentication on connected OAuth providers.",
-      "While we take reasonable precautions, no internet service is 100% secure. Use predictpy at your own risk for sensitive datasets.",
+      "While we take reasonable precautions, no internet service is 100% secure. Use PredictPy at your own risk for sensitive datasets.",
     ],
   },
   {
     title: "Your Rights",
     content: [
       "You may request access to, correction of, or deletion of your personal data at any time.",
-      "You may opt out of account creation entirely by using predictpy as a guest (if available).",
+      "You may opt out of account creation entirely by using PredictPy as a guest (if available).",
       "To exercise any of these rights, contact us at admin@predictpy.com.",
     ],
   },
@@ -71,7 +71,7 @@ const sections = [
     title: "Changes to This Policy",
     content: [
       "We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated effective date.",
-      "Continued use of predictpy after changes constitutes acceptance of the revised policy.",
+      "Continued use of PredictPy after changes constitutes acceptance of the revised policy.",
     ],
   },
 ]
@@ -107,9 +107,9 @@ export default function PrivacyPage() {
         <p className="text-sm text-white/30 mb-10">Effective date: January 1, 2025</p>
 
         <p className="text-white/50 leading-relaxed mb-12">
-          This Privacy Policy describes how predictpy (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or
+          This Privacy Policy describes how PredictPy (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or
           &ldquo;us&rdquo;) collects, uses, and protects information when you use our service. By
-          using predictpy, you agree to the practices described here.
+          using PredictPy, you agree to the practices described here.
         </p>
 
         {/* Sections */}
@@ -148,7 +148,7 @@ export default function PrivacyPage() {
 
       {/* Footer */}
       <footer className="border-t border-white/[0.04] py-6 px-6 text-center text-xs text-white/20">
-        © 2025 predictpy ·{" "}
+        © 2025 PredictPy ·{" "}
         <Link href="/about" className="hover:text-white/40 transition-colors">
           About
         </Link>{" "}

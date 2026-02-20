@@ -3,8 +3,8 @@ import { ArrowLeft, Upload, Eye, Target, ListOrdered, BarChart2, Cpu } from "luc
 import PredictpyLogo from "@/components/PredictpyLogo"
 
 export const metadata = {
-  title: "How to Use — predictpy",
-  description: "A step-by-step guide to using predictpy for ML feature selection.",
+  title: "How to Use — PredictPy",
+  description: "A step-by-step guide to using PredictPy for ML feature selection.",
 }
 
 const steps = [
@@ -13,7 +13,7 @@ const steps = [
     icon: Upload,
     title: "Upload your dataset",
     description:
-      "Drag and drop — or click to browse — a CSV, XLS, or XLSX file. predictpy accepts tabular data with any number of columns and rows.",
+      "Drag and drop — or click to browse — a CSV, XLS, or XLSX file. PredictPy accepts tabular data with any number of columns and rows.",
     tips: [
       "Make sure your file has a header row with column names.",
       "Missing values are handled automatically — no need to clean your data first.",
@@ -36,10 +36,10 @@ const steps = [
     icon: Target,
     title: "Select your target column",
     description:
-      "Choose the column you want to predict. predictpy will auto-suggest the most likely target based on column names and data characteristics. You can override it manually.",
+      "Choose the column you want to predict. PredictPy will auto-suggest the most likely target based on column names and data characteristics. You can override it manually.",
     tips: [
       "The target is the outcome variable — e.g. 'price', 'churn', 'diagnosis'.",
-      "predictpy auto-detects whether this is a regression or classification problem.",
+      "PredictPy auto-detects whether this is a regression or classification problem.",
     ],
   },
   {
@@ -106,7 +106,7 @@ export default function HowToUsePage() {
           Back to home
         </Link>
 
-        <h1 className="text-4xl font-bold tracking-tight mb-4">How to Use predictpy</h1>
+        <h1 className="text-4xl font-bold tracking-tight mb-4">How to Use PredictPy</h1>
         <p className="text-lg text-white/50 leading-relaxed mb-4">
           From raw dataset to trained model in six steps. Here&apos;s exactly how it works.
         </p>
@@ -179,7 +179,7 @@ export default function HowToUsePage() {
 
       {/* Footer */}
       <footer className="border-t border-white/[0.04] py-6 px-6 text-center text-xs text-white/20">
-        © 2025 predictpy ·{" "}
+        © 2025 PredictPy ·{" "}
         <Link href="/about" className="hover:text-white/40 transition-colors">
           About
         </Link>{" "}

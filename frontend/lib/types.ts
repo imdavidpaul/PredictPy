@@ -209,11 +209,21 @@ export interface ModelMetrics {
   ci?: Record<string, MetricCI> | null
 }
 
+export interface RocCurveEntry {
+  fpr: number[]
+  tpr: number[]
+  auc: number
+  label: string
+}
+
 export interface ModelResult {
   model_name: string
   metrics: ModelMetrics
   feature_importances: FeatureImportanceItem[] | null
   predictions: { actual: number; predicted: number }[]
+  confusion_matrix?: number[][] | null
+  class_labels?: string[] | null
+  roc_curve_data?: RocCurveEntry[] | null
 }
 
 export interface TrainResponse {
@@ -250,6 +260,39 @@ export interface EngineerFeatureRequest {
 export interface EngineerFeatureResponse {
   success: boolean
   new_column: string
+  columns: string[]
+  n_columns: number
+}
+
+// ---------------------------------------------------------------------------
+// Advanced Feature Transforms
+// ---------------------------------------------------------------------------
+
+export type FeatureTransformType =
+  | "log1p"
+  | "sqrt"
+  | "square"
+  | "reciprocal"
+  | "power_transform"
+  | "binning"
+  | "clip_outliers"
+  | "polynomial"
+
+export interface TransformFeatureRequest {
+  session_id: string
+  transform: FeatureTransformType
+  column?: string          // single-column transforms
+  columns?: string[]       // multi-column transforms (polynomial)
+  new_name?: string
+  n_bins?: number          // for "binning"
+  clip_lower?: number      // for "clip_outliers" (percentile 0-100)
+  clip_upper?: number      // for "clip_outliers" (percentile 0-100)
+}
+
+export interface TransformFeatureResponse {
+  success: boolean
+  transform: FeatureTransformType
+  created_columns: string[]
   columns: string[]
   n_columns: number
 }
@@ -435,6 +478,7 @@ export interface SHAPFeature {
 export interface SHAPResponse {
   mean_abs_shap: SHAPFeature[]
   sample_shap: number[][]
+  sample_feature_values: number[][]
   n_samples: number
   feature_columns: string[]
   method?: string   // "shap" | "model_importance" | "coefficients" | "uniform"

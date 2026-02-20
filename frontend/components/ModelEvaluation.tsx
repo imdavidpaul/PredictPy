@@ -63,15 +63,15 @@ function RocCurveChart({ data, auc }: { data: { fpr: number; tpr: number }[]; au
               type="number"
               dataKey="fpr"
               domain={[0, 1]}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "False Positive Rate", position: "insideBottom", offset: -5, fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "False Positive Rate", position: "insideBottom", offset: -5, fill: "#ffffff", fontSize: 11 }}
             />
             <YAxis
               type="number"
               dataKey="tpr"
               domain={[0, 1]}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "True Positive Rate", angle: -90, position: "insideLeft", fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "True Positive Rate", angle: -90, position: "insideLeft", fill: "#ffffff", fontSize: 11 }}
             />
             <Tooltip
               contentStyle={{
@@ -153,15 +153,15 @@ function EvalScatterChart({ data, r2, mae }: { data: { actual: number; predicted
               type="number"
               dataKey="actual"
               domain={[minVal, maxVal]}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "Actual Value", position: "insideBottom", offset: -5, fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "Actual Value", position: "insideBottom", offset: -5, fill: "#ffffff", fontSize: 11 }}
             />
             <YAxis
               type="number"
               dataKey="predicted"
               domain={[minVal, maxVal]}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "Predicted Value", angle: -90, position: "insideLeft", fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "Predicted Value", angle: -90, position: "insideLeft", fill: "#ffffff", fontSize: 11 }}
             />
             <ZAxis type="number" range={[40, 40]} />
             <Tooltip
@@ -267,15 +267,15 @@ function ResidualPlot({ data }: { data: { fitted: number; residual: number }[] }
               type="number"
               dataKey="fitted"
               name="Fitted"
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "Fitted Values", position: "insideBottom", offset: -4, fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "Fitted Values", position: "insideBottom", offset: -4, fill: "#ffffff", fontSize: 11 }}
             />
             <YAxis
               type="number"
               dataKey="residual"
               name="Residual"
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "Residual", angle: -90, position: "insideLeft", fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "Residual", angle: -90, position: "insideLeft", fill: "#ffffff", fontSize: 11 }}
             />
             <ZAxis type="number" range={[30, 30]} />
             <Tooltip
@@ -324,13 +324,13 @@ function CalibrationChart({
               type="number"
               dataKey="mean_predicted"
               domain={[0, 1]}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "Mean Predicted Probability", position: "insideBottom", offset: -4, fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "Mean Predicted Probability", position: "insideBottom", offset: -4, fill: "#ffffff", fontSize: 11 }}
             />
             <YAxis
               domain={[0, 1]}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-              label={{ value: "Fraction of Positives", angle: -90, position: "insideLeft", fill: "#71717a", fontSize: 11 }}
+              tick={{ fill: "#ffffff", fontSize: 11 }}
+              label={{ value: "Fraction of Positives", angle: -90, position: "insideLeft", fill: "#ffffff", fontSize: 11 }}
             />
             <Tooltip
               contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}

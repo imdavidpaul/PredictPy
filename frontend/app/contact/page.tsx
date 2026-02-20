@@ -3,8 +3,8 @@ import { ArrowLeft, Mail, Github, MessageSquare } from "lucide-react"
 import PredictpyLogo from "@/components/PredictpyLogo"
 
 export const metadata = {
-  title: "Contact — predictpy",
-  description: "Get in touch with the predictpy team.",
+  title: "Contact — PredictPy",
+  description: "Get in touch with the PredictPy team.",
 }
 
 export default function ContactPage() {
@@ -100,14 +100,14 @@ export default function ContactPage() {
 
         {/* Note */}
         <p className="mt-10 text-sm text-white/30 leading-relaxed text-center">
-          predictpy is a small project — we appreciate your patience and every piece of feedback helps
+          PredictPy is a small project — we appreciate your patience and every piece of feedback helps
           us improve.
         </p>
       </main>
 
       {/* Footer */}
       <footer className="border-t border-white/[0.04] py-6 px-6 text-center text-xs text-white/20">
-        © 2025 predictpy ·{" "}
+        © 2025 PredictPy ·{" "}
         <Link href="/about" className="hover:text-white/40 transition-colors">
           About
         </Link>{" "}
