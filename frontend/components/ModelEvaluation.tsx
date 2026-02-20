@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import { useDropzone } from "react-dropzone"
+import { useDropzone, FileRejection } from "react-dropzone"
 import {
   Upload,
   FileText,
@@ -461,12 +461,12 @@ export default function ModelEvaluation() {
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: (accepted, rejections) => {
+    onDrop: (accepted, rejections: FileRejection[]) => {
       if (accepted.length > 0) {
         processEvalFile(accepted[0])
       } else if (rejections.length > 0) {
-        const isTooLarge = rejections[0].errors.some((e: any) => e.code === "file-too-large")
-        const isTooMany = rejections[0].errors.some((e: any) => e.code === "too-many-files")
+        const isTooLarge = rejections[0].errors.some((e) => e.code === "file-too-large")
+        const isTooMany = rejections[0].errors.some((e) => e.code === "too-many-files")
 
         if (isTooLarge) {
           setError("File too large. Maximum size is 50 MB.")

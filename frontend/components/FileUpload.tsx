@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import { useDropzone } from "react-dropzone"
+import { useDropzone, FileRejection } from "react-dropzone"
 import { Upload, FileText, AlertCircle, Loader2, CheckCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { uploadFile, suggestTarget } from "@/lib/api"
@@ -46,7 +46,7 @@ export default function FileUpload() {
   )
 
   const onDrop = useCallback(
-    (accepted: File[], rejections: { errors: { code: string }[] }[]) => {
+    (accepted: File[], rejections: FileRejection[]) => {
       if (accepted.length > 0) {
         processFile(accepted[0])
       } else if (rejections.length > 0) {
