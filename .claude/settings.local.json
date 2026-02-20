@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app:*)",
+      "Bash(pip install:*)",
+      "Bash(python -c:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(curl:*)",
+      "Bash(kill:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(python test_lasso_training.py:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx tsc:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(python3:*)",
+      "Bash(claude plugin uninstall:*)",
+      "Bash(claude plugin --help:*)",
+      "Bash(claude plugin install:*)",
+      "Bash(\"C:\\\\Users\\\\danny\\\\AntiGravity\\\\Project -1\\\\backend\\\\main.py\":*)",
+      "Bash(python:*)",
+      "Bash(git -C \"C:/Users/danny/AntiGravity/Project -1\" status)",
+      "Bash(git -C \"C:/Users/danny/AntiGravity/Project -1\" diff --stat HEAD backend/main.py)",
+      "Bash(git -C \"C:/Users/danny/AntiGravity/Project -1\" add backend/main.py)",
+      "Bash(git -C:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\danny\\\\AntiGravity\\\\Project -1\\\\frontend\\\\.next\" -ErrorAction SilentlyContinue)"
+    ]
+  }
+}

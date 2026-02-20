@@ -1,0 +1,18 @@
+{
+  "recommendations": [
+    // Python
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+
+    // TypeScript / React
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "bradlc.vscode-tailwindcss",
+
+    // General
+    "christian-kohler.path-intellisense",
+    "mikestead.dotenv",
+    "PKief.material-icon-theme"
+  ]
+}
