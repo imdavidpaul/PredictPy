@@ -61,7 +61,7 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 
 ```bash
 # Clone the repository
-git clone https://github.com/PredictPy/predictpy.git
+git clone https://github.com/danny/predictpy.git
 cd predictpy
 
 # Install all dependencies (Backend + Frontend)
