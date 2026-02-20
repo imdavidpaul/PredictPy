@@ -356,6 +356,9 @@ export interface DriftFeature {
 export interface EvaluationResult {
   problem_type: "regression" | "classification"
   n_samples: number
+  // Predictions-only mode (no target column in test file)
+  predictions_only?: boolean
+  raw_predictions?: (number | string)[]
   // Regression
   predictions?: { actual: number; predicted: number }[]
   residuals?: { fitted: number; residual: number }[] | null
@@ -466,23 +469,6 @@ export interface PDPResponse {
   average: number[]
 }
 
-// ---------------------------------------------------------------------------
-// SHAP Values
-// ---------------------------------------------------------------------------
-
-export interface SHAPFeature {
-  feature: string
-  value: number
-}
-
-export interface SHAPResponse {
-  mean_abs_shap: SHAPFeature[]
-  sample_shap: number[][]
-  sample_feature_values: number[][]
-  n_samples: number
-  feature_columns: string[]
-  method?: string   // "shap" | "model_importance" | "coefficients" | "uniform"
-}
 
 // ---------------------------------------------------------------------------
 // RFECV

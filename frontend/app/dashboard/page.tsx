@@ -16,7 +16,6 @@ import ModelResults from "@/components/ModelResults"
 import ModelEvaluation from "@/components/ModelEvaluation"
 import Predict from "@/components/Predict"
 import LearningCurve from "@/components/LearningCurve"
-import ShapPlot from "@/components/ShapPlot"
 import PartialDependence from "@/components/PartialDependence"
 import DimensionReduction from "@/components/DimensionReduction"
 import { useStore } from "@/store/useStore"
@@ -237,7 +236,6 @@ export default function Dashboard() {
             {modelResult && <ModelResults />}
             {modelResult && (
               <div className="mt-6 space-y-6">
-                <ShapPlot />
                 <LearningCurve />
               </div>
             )}

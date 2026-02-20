@@ -16,11 +16,10 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts"
-import { useState, useEffect, useMemo } from "react"
-import { Download, Trophy, Star, AlertTriangle, Loader2, Sparkles } from "lucide-react"
+import { useState, useMemo } from "react"
+import { Download, Trophy, Star, AlertTriangle } from "lucide-react"
 import { useStore } from "@/store/useStore"
-import { getSHAP } from "@/lib/api"
-import type { ModelResult, SHAPResponse, RocCurveEntry } from "@/lib/types"
+import type { ModelResult, RocCurveEntry } from "@/lib/types"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -306,155 +305,6 @@ function PredictionsChart({ model }: { model: ModelResult }) {
       <p className="text-xs text-zinc-600 mt-2 text-center">
         Points close to the dashed line indicate more accurate predictions
       </p>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// SHAP Feature Importance Chart
-// ---------------------------------------------------------------------------
-
-function SHAPImportanceChart({ sessionId }: { sessionId: string }) {
-  const [shapData, setShapData] = useState<SHAPResponse | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [hasFetched, setHasFetched] = useState(false)
-
-  const fetchShap = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await getSHAP({ session_id: sessionId, max_samples: 500 })
-      setShapData(res)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to compute SHAP values.")
-    } finally {
-      setLoading(false)
-      setHasFetched(true)
-    }
-  }
-
-  // Auto-fetch on mount
-  useEffect(() => {
-    if (!hasFetched) {
-      fetchShap()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
-
-  if (loading) {
-    return (
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
-        <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-4 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-violet-400" />
-          SHAP Feature Importance
-        </h3>
-        <div className="flex items-center justify-center py-12 text-zinc-500 text-sm gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Computing SHAP values...
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
-        <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-4 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-violet-400" />
-          SHAP Feature Importance
-        </h3>
-        <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-          {error}
-        </p>
-      </div>
-    )
-  }
-
-  if (!shapData || shapData.mean_abs_shap.length === 0) return null
-
-  const top15 = shapData.mean_abs_shap.slice(0, 15)
-  const chartHeight = Math.max(top15.length * 36 + 20, 120)
-
-  // Violet gradient: top features get brighter violet
-  const getBarColor = (index: number): string => {
-    if (index === 0) return "#a78bfa"  // violet-400
-    if (index < 3) return "#8b5cf6"    // violet-500
-    if (index < 6) return "#7c3aed"    // violet-600
-    return "#6d28d9"                    // violet-700
-  }
-
-  const methodLabel = shapData.method === "shap"
-    ? "SHAP"
-    : shapData.method === "model_importance"
-      ? "Model Importance"
-      : shapData.method === "coefficients"
-        ? "Coefficient Magnitude"
-        : "Importance"
-
-  return (
-    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-violet-400" />
-            {methodLabel} Feature Importance
-          </h3>
-          <p className="text-[10px] text-zinc-600 mt-1">
-            Higher = feature has larger impact on model output
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {shapData.method === "shap" && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
-              True SHAP
-            </span>
-          )}
-          <span className="text-[10px] text-zinc-600">
-            {shapData.n_samples} samples
-          </span>
-        </div>
-      </div>
-      <ResponsiveContainer width="100%" height={chartHeight}>
-        <BarChart
-          data={top15}
-          layout="vertical"
-          margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
-        >
-          <XAxis
-            type="number"
-            tick={AXIS_TICK_STYLE}
-            tickFormatter={(v: number) => v.toFixed(4)}
-            label={{
-              value: `mean |${methodLabel}|`,
-              position: "insideBottom",
-              offset: -2,
-              fill: "#71717a",
-              fontSize: 10,
-            }}
-          />
-          <YAxis
-            type="category"
-            dataKey="feature"
-            tick={{ ...AXIS_TICK_STYLE, fontFamily: "monospace" }}
-            width={140}
-          />
-          <Tooltip
-            contentStyle={RECHARTS_TOOLTIP_STYLE}
-            itemStyle={{ color: "#e4e4e7" }}
-            labelStyle={{ color: "#a1a1aa", marginBottom: 4 }}
-            formatter={(v: number | undefined) => [
-              (v ?? 0).toFixed(6),
-              `mean |${methodLabel}|`,
-            ]}
-          />
-          <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-            {top15.map((_, i) => (
-              <Cell key={i} fill={getBarColor(i)} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
     </div>
   )
 }
@@ -902,8 +752,6 @@ export default function ModelResults() {
         </div>
       )}
 
-      {/* SHAP Feature Importance */}
-      {sessionId && <SHAPImportanceChart sessionId={sessionId} />}
     </div>
   )
 }
