@@ -15,6 +15,8 @@ import type {
   ScatterResponse,
   SHAPResponse,
   SuggestTargetResponse,
+  TransformFeatureRequest,
+  TransformFeatureResponse,
   TuneResponse,
   TrainRequest,
   TrainResponse,
@@ -123,6 +125,16 @@ export async function engineerFeature(
   params: EngineerFeatureRequest
 ): Promise<EngineerFeatureResponse> {
   return request<EngineerFeatureResponse>("/engineer-feature", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+export async function transformFeature(
+  params: TransformFeatureRequest
+): Promise<TransformFeatureResponse> {
+  return request<TransformFeatureResponse>("/transform-feature", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),

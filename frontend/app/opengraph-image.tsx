@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og"
 
 export const runtime = "edge"
-export const alt = "predictpy — ML Feature Selection"
+export const alt = "PredictPy — ML Feature Selection"
 export const size = { width: 1200, height: 630 }
 export const contentType = "image/png"
 
@@ -31,7 +31,7 @@ export default function Image() {
               letterSpacing: -3,
             }}
           >
-            predict
+            Predict
           </span>
           <span
             style={{
@@ -41,7 +41,7 @@ export default function Image() {
               letterSpacing: -3,
             }}
           >
-            py
+            Py
           </span>
         </div>
 

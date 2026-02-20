@@ -83,9 +83,9 @@ export default function PredictpyLogo({ size = "md" }: Props) {
 
       {/* Wordmark */}
       <span className={`${text} font-bold tracking-tight leading-none`}>
-        <span className="text-zinc-100">predict</span>
+        <span className="text-zinc-100">Predict</span>
         <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-          py
+          Py
         </span>
       </span>
     </div>

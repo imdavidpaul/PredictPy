@@ -16,7 +16,7 @@ export default function LandingPage() {
   return (
     <>
       {/* Hero */}
-      <HeroGeometric badge="predictpy" title1="What do you want to" title2="predict?">
+      <HeroGeometric badge="PredictPy" title1="What do you want to" title2="predict?">
         {/* Upload CTA */}
         <div className="flex flex-col items-center gap-5 pt-2">
           <Link
@@ -88,7 +88,7 @@ export default function LandingPage() {
               </Link>
             ))}
           </nav>
-          <p className="text-xs text-white/25">© 2026 predictpy</p>
+          <p className="text-xs text-white/25">© 2026 PredictPy</p>
         </div>
       </footer>
     </>

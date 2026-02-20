@@ -34,6 +34,7 @@ from sklearn.metrics import (
     mean_squared_error,
     r2_score,
     roc_auc_score,
+    roc_curve,
 )
 from sklearn.model_selection import (
     KFold,
@@ -42,8 +43,7 @@ from sklearn.model_selection import (
     cross_val_score,
     train_test_split,
 )
-from sklearn.metrics import roc_curve
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, label_binarize
 
 try:
     from sklearn.calibration import calibration_curve
@@ -419,12 +419,85 @@ def _train_one(
         actual = [actual[i] for i in sampled]
         predicted = [predicted[i] for i in sampled]
 
+    # ------------------------------------------------------------------
+    # Classification-only: Confusion Matrix + ROC Curve data
+    # ------------------------------------------------------------------
+    cm_data: list[list[int]] | None = None
+    cm_labels: list[str] | None = None
+    roc_curve_data: list[dict[str, Any]] | None = None
+
+    if problem_type == "classification":
+        try:
+            labels_sorted = sorted(
+                np.unique(np.concatenate([np.array(y_test), np.array(y_pred)])).tolist()
+            )
+            cm = confusion_matrix(y_test, y_pred, labels=labels_sorted)
+            cm_data = cm.tolist()
+            cm_labels = [str(lbl) for lbl in labels_sorted]
+        except Exception:
+            cm_data = None
+            cm_labels = None
+
+        # ROC curve: binary vs multi-class
+        try:
+            n_classes = len(np.unique(y_test))
+            if n_classes == 2 and hasattr(model, "predict_proba"):
+                y_prob = model.predict_proba(X_test)[:, 1]
+                fpr, tpr, _ = roc_curve(y_test, y_prob)
+                auc_val = float(roc_auc_score(y_test, y_prob))
+                # Downsample to max 200 points for payload size
+                if len(fpr) > 200:
+                    idx = np.linspace(0, len(fpr) - 1, 200).astype(int)
+                    fpr = fpr[idx]
+                    tpr = tpr[idx]
+                roc_curve_data = [
+                    {
+                        "fpr": [round(float(f), 4) for f in fpr],
+                        "tpr": [round(float(t), 4) for t in tpr],
+                        "auc": round(auc_val, 4),
+                        "label": "Positive class",
+                    }
+                ]
+            elif n_classes > 2 and hasattr(model, "predict_proba"):
+                # One-vs-Rest ROC for multi-class
+                y_test_arr = np.array(y_test)
+                classes = sorted(np.unique(y_test_arr).tolist())
+                y_test_bin = label_binarize(y_test_arr, classes=classes)
+                y_prob_all = model.predict_proba(X_test)
+                roc_curve_data = []
+                for i, cls in enumerate(classes):
+                    if y_test_bin.shape[1] <= i:
+                        break
+                    fpr_i, tpr_i, _ = roc_curve(y_test_bin[:, i], y_prob_all[:, i])
+                    try:
+                        auc_i = float(roc_auc_score(y_test_bin[:, i], y_prob_all[:, i]))
+                    except ValueError:
+                        auc_i = 0.0
+                    if len(fpr_i) > 200:
+                        idx = np.linspace(0, len(fpr_i) - 1, 200).astype(int)
+                        fpr_i = fpr_i[idx]
+                        tpr_i = tpr_i[idx]
+                    roc_curve_data.append({
+                        "fpr": [round(float(f), 4) for f in fpr_i],
+                        "tpr": [round(float(t), 4) for t in tpr_i],
+                        "auc": round(auc_i, 4),
+                        "label": str(cls),
+                    })
+            elif not hasattr(model, "predict_proba"):
+                # Model lacks predict_proba (e.g. LinearSVC)
+                roc_curve_data = None
+        except Exception:
+            roc_curve_data = None
+
     return {
         "model_name": name,
         "model_object": model,
         "metrics": metrics,
         "feature_importances": importances,
         "predictions": [{"actual": a, "predicted": p} for a, p in zip(actual, predicted)],
+        "confusion_matrix": cm_data,
+        "class_labels": cm_labels,
+        "roc_curve_data": roc_curve_data,
     }
 
 

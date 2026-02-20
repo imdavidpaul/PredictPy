@@ -3,8 +3,8 @@ import { ArrowLeft, BarChart2, Brain, FileText, Zap } from "lucide-react"
 import PredictpyLogo from "@/components/PredictpyLogo"
 
 export const metadata = {
-  title: "About — predictpy",
-  description: "Learn about predictpy — an intelligent ML feature selection tool built for data scientists.",
+  title: "About — PredictPy",
+  description: "Learn about PredictPy — an intelligent ML feature selection tool built for data scientists.",
 }
 
 const features = [
@@ -12,7 +12,7 @@ const features = [
     icon: FileText,
     title: "Upload any dataset",
     description:
-      "Drag and drop CSV, XLS, or XLSX files. predictpy parses and profiles every column automatically.",
+      "Drag and drop CSV, XLS, or XLSX files. PredictPy parses and profiles every column automatically.",
   },
   {
     icon: Brain,
@@ -65,11 +65,11 @@ export default function AboutPage() {
         <h1 className="text-4xl font-bold tracking-tight mb-4">
           About{" "}
           <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-            predictpy
+            PredictPy
           </span>
         </h1>
         <p className="text-lg text-white/50 leading-relaxed mb-12">
-          predictpy is a free, open-access ML feature selection tool that helps data scientists and
+          PredictPy is a free, open-access ML feature selection tool that helps data scientists and
           engineers quickly understand which variables in their dataset actually matter — and why.
         </p>
 
@@ -81,7 +81,7 @@ export default function AboutPage() {
           <p className="text-white/60 leading-relaxed">
             Feature selection is one of the most tedious steps in any ML workflow. It requires running
             multiple statistical tests, interpreting conflicting signals, and making judgement calls
-            about which columns to keep. We built predictpy to automate that process — combining
+            about which columns to keep. We built PredictPy to automate that process — combining
             several proven methods into a single, weighted score so you can focus on building models,
             not wrangling data.
           </p>
@@ -89,7 +89,7 @@ export default function AboutPage() {
 
         {/* Features */}
         <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-6">What predictpy does</h2>
+          <h2 className="text-xl font-semibold mb-6">What PredictPy does</h2>
           <div className="grid gap-4">
             {features.map(({ icon: Icon, title, description }) => (
               <div
@@ -122,7 +122,7 @@ export default function AboutPage() {
 
       {/* Footer */}
       <footer className="border-t border-white/[0.04] py-6 px-6 text-center text-xs text-white/20">
-        © 2025 predictpy ·{" "}
+        © 2025 PredictPy ·{" "}
         <Link href="/privacy" className="hover:text-white/40 transition-colors">
           Privacy Policy
         </Link>{" "}
