@@ -578,8 +578,51 @@ export default function ModelEvaluation() {
             </button>
           </div>
 
-          {/* Results Grid */}
-          <div className="space-y-6">
+          {/* Predictions-only mode */}
+          {evaluationResult.predictions_only && evaluationResult.raw_predictions && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-300">
+                  Target column not found in this file — showing predictions only. Upload a file with the target column to compute accuracy metrics.
+                </p>
+              </div>
+              <div className="rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden">
+                <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide">
+                    Predictions
+                  </h3>
+                  <span className="text-xs text-zinc-500">{evaluationResult.n_samples} rows</span>
+                </div>
+                <div className="overflow-y-auto max-h-96">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wide">
+                        <th className="text-left px-5 py-3">Row</th>
+                        <th className="text-left px-5 py-3">Predicted Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {evaluationResult.raw_predictions.slice(0, 500).map((pred, i) => (
+                        <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                          <td className="px-5 py-2 text-zinc-500 font-mono text-xs">{i + 1}</td>
+                          <td className="px-5 py-2 text-violet-300 font-mono font-medium">{String(pred)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {evaluationResult.raw_predictions.length > 500 && (
+                    <p className="px-5 py-3 text-xs text-zinc-600">
+                      Showing first 500 of {evaluationResult.raw_predictions.length} predictions.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Results Grid (only when target was present) */}
+          {!evaluationResult.predictions_only && <div className="space-y-6">
             {evaluationResult.problem_type === "regression" ? (
               <>
                 <EvalScatterChart
@@ -637,7 +680,7 @@ export default function ModelEvaluation() {
             {evaluationResult.drift && evaluationResult.drift.length > 0 && (
               <DriftTable driftData={evaluationResult.drift} />
             )}
-          </div>
+          </div>}
         </div>
       )}
     </div>

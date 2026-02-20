@@ -771,10 +771,37 @@ async def evaluate(
     except Exception as e:
         raise _error(f"Could not parse evaluation file: {e}")
 
-    # Check for required columns
-    missing = [c for c in [target_column] + feature_cols if c not in df_eval.columns]
-    if missing:
-        raise _error(f"Evaluation dataset is missing required columns: {missing}")
+    # Feature columns are always required; target column is optional (test sets may omit it)
+    missing_features = [c for c in feature_cols if c not in df_eval.columns]
+    if missing_features:
+        raise _error(f"Evaluation dataset is missing required feature columns: {missing_features}")
+
+    has_target = target_column in df_eval.columns
+
+    if not has_target:
+        # Predictions-only mode: no ground truth available
+        try:
+            from model_trainer import apply_meta
+            X, _ = apply_meta(df_eval[feature_cols], meta)
+            y_pred = model.predict(X)
+            raw = [v.item() if hasattr(v, "item") else v for v in y_pred]
+
+            # Decode labels if target was encoded
+            te = meta.get("target_encoder")
+            if te is not None:
+                try:
+                    raw = te.inverse_transform([int(v) for v in raw]).tolist()
+                except Exception:
+                    pass
+
+            return {
+                "problem_type": problem_type,
+                "n_samples": len(df_eval),
+                "predictions_only": True,
+                "raw_predictions": raw,
+            }
+        except Exception as e:
+            raise _error(f"Prediction failed: {e}")
 
     try:
         result = evaluate_model(
@@ -1187,166 +1214,6 @@ def get_pdp(body: PDPRequest) -> dict[str, Any]:
         }
     except Exception as e:
         raise _error(f"PDP computation failed: {e}")
-
-
-# ---------------------------------------------------------------------------
-# Phase 4: SHAP Values
-# ---------------------------------------------------------------------------
-
-# Model types used for explainer selection
-_TREE_MODEL_TYPES: tuple[str, ...] = (
-    "RandomForestRegressor", "RandomForestClassifier",
-    "GradientBoostingRegressor", "GradientBoostingClassifier",
-    "ExtraTreesRegressor", "ExtraTreesClassifier",
-    "XGBRegressor", "XGBClassifier",
-    "LGBMRegressor", "LGBMClassifier",
-    "CatBoostRegressor", "CatBoostClassifier",
-)
-
-_LINEAR_MODEL_TYPES: tuple[str, ...] = (
-    "LinearRegression", "Ridge", "Lasso",
-    "LogisticRegression",
-)
-
-
-def _get_model_class_name(model: Any) -> str:
-    """Return the class name of the underlying model, unwrapping pipelines."""
-    return type(model).__name__
-
-
-def _is_tree_model(model: Any) -> bool:
-    return _get_model_class_name(model) in _TREE_MODEL_TYPES
-
-
-def _is_linear_model(model: Any) -> bool:
-    return _get_model_class_name(model) in _LINEAR_MODEL_TYPES
-
-
-class SHAPRequest(BaseModel):
-    session_id: str
-    max_samples: int = 500
-
-
-@app.post("/shap")
-def get_shap(body: SHAPRequest) -> dict[str, Any]:
-    """
-    Compute SHAP values for the stored best model.
-
-    Explainer selection:
-      - TreeExplainer   for tree-based models (RF, XGBoost, LightGBM, CatBoost, etc.)
-      - LinearExplainer for linear models (Ridge, Lasso, LinearRegression, LogisticRegression)
-      - KernelExplainer as fallback (sampled to max 100 background rows for speed)
-
-    Returns:
-      - mean_abs_shap: global importance per feature (mean |SHAP value|)
-      - sample_shap:   per-sample SHAP values (top 50 rows) for beeswarm/waterfall
-      - feature_columns, n_samples, method
-    """
-    model_data = _best_models.get(body.session_id)
-    if model_data is None:
-        raise HTTPException(
-            status_code=400,
-            detail="No trained model found for this session. Train a model first.",
-        )
-    model = model_data["model"]
-    meta = model_data["meta"]
-    feature_cols = meta["feature_columns"]
-
-    df = _get_df(body.session_id)
-    from model_trainer import apply_meta
-    X, _ = apply_meta(df[feature_cols], meta)
-
-    # --- Try SHAP library ---
-    try:
-        import shap as _shap
-
-        if _is_tree_model(model):
-            # TreeExplainer is fast -- use all available data (up to max_samples)
-            n = min(body.max_samples, len(X))
-            X_sample = X.iloc[:n]
-            explainer = _shap.TreeExplainer(model)
-            shap_values = explainer.shap_values(X_sample)
-        elif _is_linear_model(model):
-            n = min(body.max_samples, len(X))
-            X_sample = X.iloc[:n]
-            explainer = _shap.LinearExplainer(model, X_sample)
-            shap_values = explainer.shap_values(X_sample)
-        else:
-            # KernelExplainer fallback -- slow, so limit both background and explain sets
-            n = min(100, len(X))
-            X_sample = X.iloc[:n]
-            background = _shap.sample(X, min(50, len(X)))
-            explainer = _shap.KernelExplainer(model.predict, background)
-            shap_values = explainer.shap_values(X_sample, nsamples=200)
-
-        # Normalize shape: shap_values can be:
-        #   - ndarray (n_samples, n_features) for regression / binary
-        #   - list of ndarrays for multi-class classification
-        #   - Explanation object (shap >= 0.40)
-        if hasattr(shap_values, "values"):
-            # shap.Explanation object
-            shap_arr = np.array(shap_values.values)
-        elif isinstance(shap_values, list):
-            # Multi-class: list of arrays, each (n_samples, n_features)
-            # Average absolute values across classes to get a single (n_samples, n_features)
-            stacked = np.array(shap_values)  # (n_classes, n_samples, n_features)
-            shap_arr = np.abs(stacked).mean(axis=0)  # (n_samples, n_features)
-        else:
-            shap_arr = np.array(shap_values)
-
-        # Handle 3D arrays from some explainers (n_classes, n_samples, n_features)
-        if shap_arr.ndim == 3:
-            shap_arr = np.abs(shap_arr).mean(axis=0)
-
-        # Global importance: mean |SHAP| per feature
-        mean_abs = np.abs(shap_arr).mean(axis=0)
-
-        # Per-sample values: return top 50 rows for beeswarm/waterfall charts
-        n_sample_rows = min(50, shap_arr.shape[0])
-        sample_shap = shap_arr[:n_sample_rows].tolist()
-
-        # Feature values for the same sample rows (needed for beeswarm coloring)
-        sample_feature_values = X_sample.iloc[:n_sample_rows].values.tolist()
-
-        method = "shap"
-
-    except ImportError:
-        # SHAP not installed -- fall back to model-native importance
-        logger.warning("shap library not installed; falling back to model-native importance.")
-        n = len(X)
-        sample_shap = []
-        sample_feature_values = []
-
-        if hasattr(model, "feature_importances_"):
-            mean_abs = model.feature_importances_
-            method = "model_importance"
-        elif hasattr(model, "coef_"):
-            coef = model.coef_
-            mean_abs = np.abs(coef).mean(axis=0) if coef.ndim > 1 else np.abs(coef)
-            method = "coefficients"
-        else:
-            mean_abs = np.ones(len(feature_cols)) / len(feature_cols)
-            method = "uniform"
-
-    except Exception as e:
-        logger.error("SHAP computation failed: %s", e, exc_info=True)
-        raise _error(f"SHAP computation failed: {e}")
-
-    # Build sorted global importance list
-    feature_shap = [
-        {"feature": col, "value": round(float(v), 6)}
-        for col, v in zip(feature_cols, mean_abs)
-    ]
-    feature_shap.sort(key=lambda x: x["value"], reverse=True)
-
-    return {
-        "mean_abs_shap": feature_shap,
-        "sample_shap": sample_shap,
-        "sample_feature_values": sample_feature_values,
-        "n_samples": n,
-        "feature_columns": feature_cols,
-        "method": method,
-    }
 
 
 # ---------------------------------------------------------------------------

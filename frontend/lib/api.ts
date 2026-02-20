@@ -13,7 +13,6 @@ import type {
   ReduceResponse,
   RFECVResponse,
   ScatterResponse,
-  SHAPResponse,
   SuggestTargetResponse,
   TransformFeatureRequest,
   TransformFeatureResponse,
@@ -254,21 +253,6 @@ export async function getPDP(params: {
   feature_column: string
 }): Promise<PDPResponse> {
   return request<PDPResponse>("/pdp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Phase 4: SHAP Values
-// ---------------------------------------------------------------------------
-
-export async function getSHAP(params: {
-  session_id: string
-  max_samples?: number
-}): Promise<SHAPResponse> {
-  return request<SHAPResponse>("/shap", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
