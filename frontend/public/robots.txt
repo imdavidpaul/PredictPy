@@ -1,0 +1,12 @@
+User-agent: *
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /api/
+
+Allow: /
+Allow: /about
+Allow: /how-to-use
+Allow: /contact
+Allow: /privacy
+Allow: /login
+Allow: /signup

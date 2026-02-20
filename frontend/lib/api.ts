@@ -1,14 +1,27 @@
 import type {
   AnalyzeResponse,
+  BatchPredictResponse,
   CorrelationMatrixResponse,
   DistributionResponse,
   EngineerFeatureRequest,
   EngineerFeatureResponse,
+  LearningCurveResponse,
+  OutlierResponse,
+  PDPResponse,
+  PredictRequest,
+  PredictResponse,
+  ReduceResponse,
+  RFECVResponse,
   ScatterResponse,
+  SHAPResponse,
   SuggestTargetResponse,
+  TuneResponse,
   TrainRequest,
   TrainResponse,
   UploadResponse,
+  EvaluateRequest,
+  EvaluationResult,
+  VIFResponse,
 } from "./types"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -94,6 +107,14 @@ export async function trainModels(params: TrainRequest): Promise<TrainResponse> 
   })
 }
 
+export async function getAvailableModels(
+  problemType: string
+): Promise<{ models: string[] }> {
+  return request<{ models: string[] }>(`/models?problem_type=${problemType}`, {
+    method: "GET",
+  })
+}
+
 export async function deleteSession(sessionId: string): Promise<void> {
   await request<void>(`/session/${sessionId}`, { method: "DELETE" })
 }
@@ -131,3 +152,167 @@ export async function getDistribution(params: {
     body: JSON.stringify(params),
   })
 }
+
+export async function evaluateModel(params: EvaluateRequest): Promise<EvaluationResult> {
+  const form = new FormData()
+  form.append("session_id", params.session_id)
+  form.append("target_column", params.target_column)
+  form.append("problem_type", params.problem_type)
+  form.append("feature_columns", JSON.stringify(params.feature_columns))
+  form.append("file", params.file)
+
+  return request<EvaluationResult>("/evaluate", {
+    method: "POST",
+    body: form,
+  })
+}
+
+export async function predictSingle(params: PredictRequest): Promise<PredictResponse> {
+  return request<PredictResponse>("/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+export async function predictBatch(sessionId: string, file: File): Promise<BatchPredictResponse> {
+  const form = new FormData()
+  form.append("session_id", sessionId)
+  form.append("file", file)
+  return request<BatchPredictResponse>("/predict-batch", {
+    method: "POST",
+    body: form,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: Outlier Detection
+// ---------------------------------------------------------------------------
+
+export async function getOutliers(params: {
+  session_id: string
+  columns?: string[]
+}): Promise<OutlierResponse> {
+  return request<OutlierResponse>("/outliers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: VIF
+// ---------------------------------------------------------------------------
+
+export async function getVIF(params: {
+  session_id: string
+  feature_columns: string[]
+}): Promise<VIFResponse> {
+  return request<VIFResponse>("/vif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: Learning Curves
+// ---------------------------------------------------------------------------
+
+export async function getLearningCurve(params: {
+  session_id: string
+  target_column: string
+  feature_columns: string[]
+  problem_type: string
+  model_name?: string
+}): Promise<LearningCurveResponse> {
+  return request<LearningCurveResponse>("/learning-curve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: Partial Dependence Plot
+// ---------------------------------------------------------------------------
+
+export async function getPDP(params: {
+  session_id: string
+  feature_column: string
+}): Promise<PDPResponse> {
+  return request<PDPResponse>("/pdp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: SHAP Values
+// ---------------------------------------------------------------------------
+
+export async function getSHAP(params: {
+  session_id: string
+  max_samples?: number
+}): Promise<SHAPResponse> {
+  return request<SHAPResponse>("/shap", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: RFECV
+// ---------------------------------------------------------------------------
+
+export async function runRFECV(params: {
+  session_id: string
+  target_column: string
+  feature_columns: string[]
+  problem_type: string
+}): Promise<RFECVResponse> {
+  return request<RFECVResponse>("/rfecv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: Hyperparameter Tuning
+// ---------------------------------------------------------------------------
+
+export async function tuneHyperparams(params: {
+  session_id: string
+  target_column: string
+  feature_columns: string[]
+  problem_type: string
+  model_name: string
+}): Promise<TuneResponse> {
+  return request<TuneResponse>("/tune", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: Dimensionality Reduction
+// ---------------------------------------------------------------------------
+
+export async function reduceDimensions(params: {
+  session_id: string
+  feature_columns: string[]
+  target_column: string
+  method?: "pca" | "tsne"
+  n_components?: number
+}): Promise<ReduceResponse> {
+  return request<ReduceResponse>("/reduce", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+

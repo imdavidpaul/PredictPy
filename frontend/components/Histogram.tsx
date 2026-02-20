@@ -98,10 +98,14 @@ const TOOLTIP_STYLE = {
   background: "#18181b",
   border: "1px solid #3f3f46",
   borderRadius: 6,
-  color: "#e4e4e7",
   fontSize: 11,
   padding: "4px 8px",
 }
+
+const TOOLTIP_ITEM_STYLE = { color: "#e4e4e7" }
+const TOOLTIP_LABEL_STYLE = { color: "#a1a1aa", marginBottom: 4 }
+const AXIS_TICK = { fill: "#71717a", fontSize: 9 }
+const AXIS_LABEL_FILL = "#71717a"
 
 function HistCard({ state }: { state: FeatureHistState }) {
   const { column, data, loading, error } = state
@@ -191,7 +195,7 @@ function HistCard({ state }: { state: FeatureHistState }) {
             <CartesianGrid strokeDasharray="2 2" stroke="#27272a" />
             <XAxis
               dataKey="label"
-              tick={{ fill: "#52525b", fontSize: 9 }}
+              tick={AXIS_TICK}
               angle={data.bins.length > 8 ? -35 : 0}
               textAnchor={data.bins.length > 8 ? "end" : "middle"}
               interval={data.bins.length > 12 ? Math.floor(data.bins.length / 8) : 0}
@@ -199,10 +203,10 @@ function HistCard({ state }: { state: FeatureHistState }) {
             />
             <YAxis
               yAxisId="count"
-              tick={{ fill: "#71717a", fontSize: 9 }}
+              tick={AXIS_TICK}
               tickLine={false}
               width={36}
-              label={{ value: "Count", angle: -90, position: "insideLeft", fill: "#71717a", fontSize: 9, dy: 18 }}
+              label={{ value: "Count", angle: -90, position: "insideLeft", fill: AXIS_LABEL_FILL, fontSize: 9, dy: 18 }}
             />
             {data.kde_points && (
               <YAxis
@@ -217,6 +221,8 @@ function HistCard({ state }: { state: FeatureHistState }) {
             )}
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
+              itemStyle={TOOLTIP_ITEM_STYLE}
+              labelStyle={TOOLTIP_LABEL_STYLE}
               formatter={(v: number | undefined, name: string | undefined) => [
                 v != null ? (name === "density" ? v.toFixed(5) : v.toLocaleString()) : "—",
                 name === "density" ? "KDE Density" : "Count",
@@ -280,22 +286,24 @@ function HistCard({ state }: { state: FeatureHistState }) {
             <CartesianGrid strokeDasharray="2 2" stroke="#27272a" />
             <XAxis
               dataKey="label"
-              tick={{ fill: "#52525b", fontSize: 9 }}
+              tick={AXIS_TICK}
               angle={data.cdf.length > 8 ? -35 : 0}
               textAnchor={data.cdf.length > 8 ? "end" : "middle"}
               interval={data.cdf.length > 12 ? Math.floor(data.cdf.length / 8) : 0}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: "#71717a", fontSize: 9 }}
+              tick={AXIS_TICK}
               tickLine={false}
               width={36}
               domain={[0, 100]}
               tickFormatter={(v: number) => `${v}%`}
-              label={{ value: "Cumul. %", angle: -90, position: "insideLeft", fill: "#71717a", fontSize: 9, dy: 28 }}
+              label={{ value: "Cumul. %", angle: -90, position: "insideLeft", fill: AXIS_LABEL_FILL, fontSize: 9, dy: 28 }}
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
+              itemStyle={TOOLTIP_ITEM_STYLE}
+              labelStyle={TOOLTIP_LABEL_STYLE}
               formatter={(v: number | undefined) => [
                 v != null ? `${v.toFixed(1)}%` : "—",
                 "Cumulative",

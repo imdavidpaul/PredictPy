@@ -1,0 +1,13 @@
+services:
+  backend:
+    environment:
+      - ALLOWED_ORIGINS=http://localhost:3000,http://35.170.243.159,http://ec2-34-234-65-23.compute-1.amazonaws.com
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://ec2-34-234-65-23.compute-1.amazonaws.com
+    environment:
+      - NEXT_PUBLIC_API_URL=http://ec2-34-234-65-23.compute-1.amazonaws.com

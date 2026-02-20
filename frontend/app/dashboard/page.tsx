@@ -1,6 +1,7 @@
 "use client"
 
-import { RotateCcw, ChevronRight, ChevronLeft, Sparkles } from "lucide-react"
+import { useState } from "react"
+import { RotateCcw, ChevronRight, ChevronLeft, Sparkles, AlertTriangle } from "lucide-react"
 import PredictpyLogo from "@/components/PredictpyLogo"
 import FileUpload from "@/components/FileUpload"
 import DatasetPreview from "@/components/DatasetPreview"
@@ -12,43 +13,71 @@ import Histogram from "@/components/Histogram"
 import StepIndicator from "@/components/StepIndicator"
 import ModelTrainer from "@/components/ModelTrainer"
 import ModelResults from "@/components/ModelResults"
+import ModelEvaluation from "@/components/ModelEvaluation"
+import Predict from "@/components/Predict"
+import LearningCurve from "@/components/LearningCurve"
+import ShapPlot from "@/components/ShapPlot"
+import PartialDependence from "@/components/PartialDependence"
+import DimensionReduction from "@/components/DimensionReduction"
 import { useStore } from "@/store/useStore"
 
 const STEP_TITLES: Record<string, { title: string; subtitle: string }> = {
   upload: {
     title: "Upload Your Dataset",
-    subtitle: "Supports CSV, XLS, and XLSX files",
+    subtitle: "Supports CSV, XLS, and XLSX files up to 50 MB",
   },
   preview: {
     title: "Dataset Overview",
-    subtitle: "Review your data, column types, and missing values",
+    subtitle: "Review column types, missing values, and statistical profiles",
   },
   target: {
     title: "Select Target Variable",
-    subtitle: "Choose the outcome variable for your ML model",
+    subtitle: "Choose the outcome variable your ML model will learn to predict",
   },
   features: {
     title: "Feature Ranking",
-    subtitle: "Features ranked by correlation strength to your target",
+    subtitle: "Features ranked by correlation strength using multiple statistical methods",
   },
   charts: {
     title: "Visualizations",
-    subtitle: "Scatter plots and correlation heatmap",
+    subtitle: "Scatter plots, distribution histograms, and correlation heatmap",
   },
   model: {
     title: "Model Training",
-    subtitle: "Train ML models on your selected features and compare performance",
+    subtitle: "Train and compare ML models across your selected features",
+  },
+  predict: {
+    title: "Real-Time Prediction",
+    subtitle: "Enter feature values or upload a file to get instant predictions",
+  },
+  evaluation: {
+    title: "Model Evaluation",
+    subtitle: "Upload a holdout dataset to evaluate the best model's generalization",
   },
 }
 
+const UPLOAD_FEATURES = [
+  "Auto problem detection",
+  "Missing value analysis",
+  "Smart target suggestion",
+  "Pearson + Spearman",
+  "Mutual Information",
+  "Random Forest importance",
+  "Scatter plots",
+  "Correlation heatmap",
+  "Model training",
+  "CSV + PDF export",
+]
+
 export default function Dashboard() {
   const { currentStep, setStep, reset, filename, sessionId, modelResult } = useStore()
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   const info = STEP_TITLES[currentStep]
 
   const stepOrder = sessionId
-    ? ["preview", "target", "features", "charts", "model"]
-    : ["upload", "preview", "target", "features", "charts", "model"]
+    ? ["preview", "target", "features", "charts", "model", "predict", "evaluation"]
+    : ["upload", "preview", "target", "features", "charts", "model", "predict", "evaluation"]
   const stepIndex = stepOrder.indexOf(currentStep)
 
   const canGoBack = stepIndex > 0
@@ -60,54 +89,83 @@ export default function Dashboard() {
   const goBack = () => setStep(stepOrder[stepIndex - 1] as typeof currentStep)
   const goNext = () => setStep(stepOrder[stepIndex + 1] as typeof currentStep)
 
+  const handleReset = () => {
+    reset()
+    setShowResetConfirm(false)
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
       {/* Header */}
-      <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 shrink-0">
             <PredictpyLogo size="sm" />
             {filename && (
-              <span className="text-xs text-zinc-500 font-mono hidden sm:block">
+              <span className="text-xs text-zinc-500 font-mono hidden sm:block truncate max-w-[180px]">
                 · {filename}
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             {sessionId && <StepIndicator />}
             {sessionId && (
-              <button
-                onClick={reset}
-                className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reset
-              </button>
+              <div className="relative shrink-0">
+                {showResetConfirm ? (
+                  <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="text-xs text-zinc-300">Reset session?</span>
+                    <button
+                      onClick={handleReset}
+                      className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors"
+                    >
+                      Yes
+                    </button>
+                    <button
+                      onClick={() => setShowResetConfirm(false)}
+                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1.5 rounded-lg hover:bg-zinc-900"
+                    aria-label="Reset session and start over"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
       </header>
 
       {/* Main */}
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-10">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-10">
         {/* Step heading */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-100">{info.title}</h1>
-          <p className="text-zinc-500 mt-1 text-sm">{info.subtitle}</p>
-        </div>
+        {currentStep !== "upload" && (
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">{info.title}</h1>
+            <p className="text-zinc-500 mt-1 text-sm leading-relaxed">{info.subtitle}</p>
+          </div>
+        )}
 
         {/* Step content */}
         {currentStep === "upload" && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="text-center mb-12 max-w-xl">
+          <div className="flex flex-col items-center justify-center py-10">
+            <div className="text-center mb-10 max-w-xl">
               <div className="flex items-center justify-center mx-auto mb-6">
                 <PredictpyLogo size="lg" />
               </div>
-              <h2 className="text-3xl font-bold text-zinc-100 mb-3">
+              <h1 className="text-3xl font-bold text-zinc-100 mb-3 tracking-tight">
                 Intelligent Feature Selection
-              </h2>
-              <p className="text-zinc-400 leading-relaxed">
+              </h1>
+              <p className="text-zinc-400 leading-relaxed text-sm sm:text-base">
                 Upload your dataset and our algorithm will automatically detect the problem type,
                 analyze missing values, suggest the target variable, and rank features by
                 correlation strength using multiple statistical methods.
@@ -116,22 +174,11 @@ export default function Dashboard() {
 
             <FileUpload />
 
-            <div className="flex flex-wrap gap-3 justify-center mt-10">
-              {[
-                "Auto problem detection",
-                "Missing value analysis",
-                "Smart target suggestion",
-                "Pearson + Spearman",
-                "Mutual Information",
-                "Random Forest importance",
-                "Scatter plots",
-                "Correlation heatmap",
-                "Model training",
-                "CSV + PDF export",
-              ].map((f) => (
+            <div className="flex flex-wrap gap-2 justify-center mt-10 max-w-2xl">
+              {UPLOAD_FEATURES.map((f) => (
                 <span
                   key={f}
-                  className="px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-400"
+                  className="px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 select-none"
                 >
                   {f}
                 </span>
@@ -146,10 +193,10 @@ export default function Dashboard() {
             <div className="mt-8 flex justify-end">
               <button
                 onClick={() => setStep("target")}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm transition-all"
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm transition-colors"
               >
                 Select Target Variable
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
           </>
@@ -169,14 +216,16 @@ export default function Dashboard() {
               </h2>
               <CorrelationHeatmap />
             </div>
+            <PartialDependence />
+            <DimensionReduction />
             <div className="flex justify-end">
               <button
                 onClick={() => setStep("model")}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm transition-all"
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm transition-colors"
               >
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-4 h-4" aria-hidden="true" />
                 Train a Model
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -186,29 +235,57 @@ export default function Dashboard() {
           <div>
             <ModelTrainer />
             {modelResult && <ModelResults />}
+            {modelResult && (
+              <div className="mt-6 space-y-6">
+                <ShapPlot />
+                <LearningCurve />
+              </div>
+            )}
+            {modelResult && currentStep === "model" && (
+              <div className="mt-8 flex justify-end">
+                <button
+                  onClick={() => setStep("predict")}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm transition-colors"
+                >
+                  <Sparkles className="w-4 h-4" aria-hidden="true" />
+                  Real-Time Prediction
+                  <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
         )}
+
+        {currentStep === "predict" && <Predict />}
+
+        {currentStep === "evaluation" && <ModelEvaluation />}
       </main>
 
       {/* Bottom nav */}
       {sessionId && currentStep !== "upload" && (
-        <div className="border-t border-zinc-800 bg-zinc-950">
-          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="border-t border-zinc-800 bg-zinc-950/90 backdrop-blur-sm sticky bottom-0 z-10">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
             <button
               onClick={goBack}
               disabled={!canGoBack}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
               Back
             </button>
+
+            {/* Step progress indicator */}
+            <span className="text-xs text-zinc-500 hidden sm:block">
+              Step {stepIndex + 1} of {stepOrder.length}
+            </span>
+
             <button
               onClick={goNext}
               disabled={!canGoNext}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         </div>

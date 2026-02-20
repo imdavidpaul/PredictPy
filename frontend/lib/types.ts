@@ -20,6 +20,9 @@ export interface ColumnProfile {
   median?: number
   q25?: number
   q75?: number
+  skewness?: number | null
+  kurtosis?: number | null
+  suggested_transform?: "log" | "sqrt" | "none"
   // Categorical columns
   top_value?: string
   top_value_count?: number
@@ -114,6 +117,13 @@ export interface FeatureResult {
   correlation_direction: "positive" | "negative" | "n/a"
 }
 
+export interface ClassBalance {
+  counts: Record<string, number>
+  imbalance_ratio: number | null
+  is_severe: boolean
+  n_classes: number
+}
+
 export interface AnalyzeResponse {
   problem_type: "regression" | "classification"
   target_column: string
@@ -121,6 +131,7 @@ export interface AnalyzeResponse {
   total_features_analyzed: number
   top_n: number
   weights_used: Record<string, number>
+  class_balance?: ClassBalance
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +181,7 @@ export interface CorrelationMatrixResponse {
 // ---------------------------------------------------------------------------
 
 export type ProblemType = "regression" | "classification"
-export type AppStep = "upload" | "preview" | "target" | "features" | "charts" | "model"
+export type AppStep = "upload" | "preview" | "target" | "features" | "charts" | "model" | "predict" | "evaluation"
 
 // ---------------------------------------------------------------------------
 // Model Training
@@ -179,6 +190,11 @@ export type AppStep = "upload" | "preview" | "target" | "features" | "charts" | 
 export interface FeatureImportanceItem {
   feature: string
   importance: number
+}
+
+export interface MetricCI {
+  lower: number
+  upper: number
 }
 
 export interface ModelMetrics {
@@ -190,6 +206,7 @@ export interface ModelMetrics {
   roc_auc?: number | null
   cv_mean?: number | null
   cv_std?: number | null
+  ci?: Record<string, MetricCI> | null
 }
 
 export interface ModelResult {
@@ -280,4 +297,196 @@ export interface DistributionResponse {
   kde_points: KdePoint[] | null
   box_stats: BoxStats | null
   cdf: CdfPoint[] | null
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation
+// ---------------------------------------------------------------------------
+
+export interface DriftFeature {
+  feature: string
+  test: "ks" | "chi2"
+  p_value: number
+  drifted: boolean
+}
+
+export interface EvaluationResult {
+  problem_type: "regression" | "classification"
+  n_samples: number
+  // Regression
+  predictions?: { actual: number; predicted: number }[]
+  residuals?: { fitted: number; residual: number }[] | null
+  r2?: number
+  mae?: number
+  rmse?: number
+  // Classification
+  accuracy?: number
+  f1?: number
+  roc_curve?: { fpr: number; tpr: number }[] | null
+  roc_auc?: number | null
+  confusion_matrix?: number[][] | null
+  class_labels?: string[] | null
+  calibration?: {
+    fraction_of_positives: number[]
+    mean_predicted: number[]
+  } | null
+  // Drift detection
+  drift?: DriftFeature[] | null
+}
+
+export interface EvaluateRequest {
+  session_id: string
+  target_column: string
+  problem_type: "regression" | "classification"
+  feature_columns: string[]
+  file: File
+}
+
+// ---------------------------------------------------------------------------
+// Prediction
+// ---------------------------------------------------------------------------
+
+export interface PredictRequest {
+  session_id: string
+  feature_values: Record<string, number | string>
+}
+
+export interface PredictResponse {
+  prediction: number | string
+  probabilities?: Record<string, number>
+  prediction_interval?: { lower_95: number; upper_95: number }
+  warnings: string[]
+}
+
+export interface BatchPredictResponse {
+  predictions: (number | string)[]
+  probabilities?: Record<string, number>[]
+  n_rows: number
+  warnings: string[]
+  missing_features: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Outlier Detection
+// ---------------------------------------------------------------------------
+
+export interface OutlierColumn {
+  column: string
+  z_score_count: number
+  iqr_count: number
+  z_score_pct: number
+  iqr_pct: number
+  n_valid: number
+}
+
+export interface OutlierResponse {
+  outliers: OutlierColumn[]
+  n_rows: number
+}
+
+// ---------------------------------------------------------------------------
+// VIF (Multicollinearity)
+// ---------------------------------------------------------------------------
+
+export interface VIFEntry {
+  feature: string
+  vif: number | null
+}
+
+export interface VIFResponse {
+  vif: VIFEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// Learning Curves
+// ---------------------------------------------------------------------------
+
+export interface LearningCurvePoint {
+  train_size: number
+  train_score: number
+  val_score: number
+  val_std: number
+}
+
+export interface LearningCurveResponse {
+  learning_curve: LearningCurvePoint[]
+  scoring: string
+}
+
+// ---------------------------------------------------------------------------
+// Partial Dependence Plot
+// ---------------------------------------------------------------------------
+
+export interface PDPResponse {
+  feature: string
+  values: number[]
+  average: number[]
+}
+
+// ---------------------------------------------------------------------------
+// SHAP Values
+// ---------------------------------------------------------------------------
+
+export interface SHAPFeature {
+  feature: string
+  value: number
+}
+
+export interface SHAPResponse {
+  mean_abs_shap: SHAPFeature[]
+  sample_shap: number[][]
+  n_samples: number
+  feature_columns: string[]
+  method?: string   // "shap" | "model_importance" | "coefficients" | "uniform"
+}
+
+// ---------------------------------------------------------------------------
+// RFECV
+// ---------------------------------------------------------------------------
+
+export interface RFECVRanking {
+  feature: string
+  rank: number
+}
+
+export interface RFECVResponse {
+  optimal_features: string[]
+  n_optimal: number
+  ranking: RFECVRanking[]
+  cv_scores: number[]
+}
+
+// ---------------------------------------------------------------------------
+// Hyperparameter Tuning
+// ---------------------------------------------------------------------------
+
+export interface TuneResult {
+  params: Record<string, unknown>
+  score: number
+  std: number
+}
+
+export interface TuneResponse {
+  best_params: Record<string, unknown>
+  best_score: number
+  results: TuneResult[]
+  scoring: string
+}
+
+// ---------------------------------------------------------------------------
+// Dimensionality Reduction (PCA / t-SNE)
+// ---------------------------------------------------------------------------
+
+export interface ReductionPoint {
+  x: number
+  y: number
+  target: number
+}
+
+export interface ReduceResponse {
+  method: "pca" | "tsne"
+  points: ReductionPoint[]
+  explained_variance: number[] | null
+  n_points: number
+  feature_columns: string[]
 }

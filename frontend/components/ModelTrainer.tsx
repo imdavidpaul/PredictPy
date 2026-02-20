@@ -1,12 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, CheckSquare, Square, Brain } from "lucide-react"
+import { Loader2, CheckSquare, Square, Brain, Wand2, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { trainModels } from "@/lib/api"
+import { trainModels, tuneHyperparams, getAvailableModels } from "@/lib/api"
 import { useStore } from "@/store/useStore"
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+import type { TuneResponse } from "@/lib/types"
 
 export default function ModelTrainer() {
   const {
@@ -25,6 +24,9 @@ export default function ModelTrainer() {
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [tuningModel, setTuningModel] = useState<string | null>(null)
+  const [tuneResults, setTuneResults] = useState<Record<string, TuneResponse>>({})
+  const [tuneDrawer, setTuneDrawer] = useState<string | null>(null)
 
   // Pre-check top 10 features by default
   useEffect(() => {
@@ -38,8 +40,7 @@ export default function ModelTrainer() {
   useEffect(() => {
     if (!analysisResult) return
     const pt = selectedProblemType ?? analysisResult.problem_type
-    fetch(`${BASE_URL}/models?problem_type=${pt}`)
-      .then((r) => r.json())
+    getAvailableModels(pt)
       .then((d) => setAvailableModels(d.models ?? []))
       .catch(() => {
         // Fallback list if endpoint fails
@@ -90,6 +91,26 @@ export default function ModelTrainer() {
       setError(err instanceof Error ? err.message : "Training failed.")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleTune = async (modelName: string) => {
+    if (!sessionId || !selectedTarget || selectedFeatureColumns.length === 0) return
+    setTuningModel(modelName)
+    try {
+      const res = await tuneHyperparams({
+        session_id: sessionId,
+        target_column: selectedTarget,
+        feature_columns: selectedFeatureColumns,
+        problem_type: (selectedProblemType ?? problem_type) as "regression" | "classification",
+        model_name: modelName,
+      })
+      setTuneResults((prev) => ({ ...prev, [modelName]: res }))
+      setTuneDrawer(modelName)
+    } catch {
+      // silently ignore or show inline error
+    } finally {
+      setTuningModel(null)
     }
   }
 
@@ -241,17 +262,55 @@ export default function ModelTrainer() {
         <p className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-3">
           Models (all will be trained)
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2">
           {availableModels.length === 0 ? (
             <span className="text-xs text-zinc-600">Loading…</span>
           ) : availableModels.map((m) => (
-            <span
-              key={m}
-              className="px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-300 flex items-center gap-1.5"
-            >
-              <Brain className="w-3 h-3 text-violet-400" />
-              {m}
-            </span>
+            <div key={m} className="space-y-1">
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700">
+                <span className="text-xs text-zinc-300 flex items-center gap-1.5">
+                  <Brain className="w-3 h-3 text-violet-400" />
+                  {m}
+                </span>
+                <button
+                  onClick={() => handleTune(m)}
+                  disabled={tuningModel === m || selectedFeatureColumns.length === 0}
+                  className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors disabled:opacity-40"
+                  title="Auto-tune hyperparameters"
+                >
+                  {tuningModel === m ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3 h-3" />
+                  )}
+                  Auto-Tune
+                  {tuneResults[m] && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setTuneDrawer(tuneDrawer === m ? null : m) }}
+                      className="ml-1"
+                    >
+                      {tuneDrawer === m ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+                  )}
+                </button>
+              </div>
+              {tuneDrawer === m && tuneResults[m] && (
+                <div className="ml-3 rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-xs space-y-1">
+                  <p className="text-zinc-400 font-semibold">
+                    Best score: <span className="text-violet-300 font-mono">{tuneResults[m].best_score.toFixed(4)}</span>
+                    <span className="text-zinc-600 ml-1">({tuneResults[m].scoring})</span>
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {Object.entries(tuneResults[m].best_params).map(([k, v]) => (
+                      <span key={k} className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-[10px]">
+                        <span className="text-zinc-500">{k}=</span>
+                        <span className="text-zinc-200">{String(v)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </div>
