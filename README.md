@@ -6,7 +6,7 @@
 [![Next.js 16](https://img.shields.io/badge/next.js-16-black.svg)](https://nextjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-PredictPy is a code-free machine learning platform that automates the entire ML pipeline. Upload a dataset, and PredictPy will handle the profiling, feature ranking, model training, and evaluation—providing you with a production-ready `.pkl` model file in minutes.
+PredictPy is a code-free machine learning platform that automates the entire ML pipeline. Upload a dataset, and PredictPy will handle the profiling, feature ranking, model training, and evaluation—providing you with a production-ready `.pkl` file in minutes.
 
 ---
 
