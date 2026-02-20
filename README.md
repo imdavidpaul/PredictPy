@@ -91,10 +91,6 @@ make backend
 make frontend
 ```
 
-The app will be available at:
-- **Frontend**: [http://localhost:3000](http://localhost:3000)
-- **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-
 ---
 
 ## 🎯 App Workflow
