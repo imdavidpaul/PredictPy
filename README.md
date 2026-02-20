@@ -1,206 +1,127 @@
-# predictpy
+# PredictPy 🚀
 
 **Intelligent ML feature selection and model training — in your browser.**
 
-Upload a dataset, and predictpy automatically detects the problem type, profiles your data, ranks features using multiple statistical methods, trains and compares ML models, and gives you a downloadable `.pkl` file — all without writing a single line of code.
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Next.js 16](https://img.shields.io/badge/next.js-16-black.svg)](https://nextjs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+PredictPy is a code-free machine learning platform that automates the entire ML pipeline. Upload a dataset, and PredictPy will handle the profiling, feature ranking, model training, and evaluation—providing you with a production-ready `.pkl` model file in minutes.
 
 ---
 
-## Features
+## ✨ Key Features
 
-### Data Analysis
-- **Auto problem detection** — classifies regression vs. classification from your data
-- **Dataset profiling** — column types, missing values, skewness, kurtosis, transform suggestions
-- **Outlier detection** — IQR and Z-score methods per column
-- **Class imbalance warning** — flags severe imbalance with ratio and class breakdown
+### 📊 Exploratory Data Analysis (EDA)
+- **Auto Problem Detection**: Instantly classifies your task as **Regression** or **Classification**.
+- **Dataset Profiling**: Deep-dive into column types, missing values, skewness, kurtosis, and data quality.
+- **Outlier Detection**: Automated IQR and Z-score analysis to identify anomalies.
+- **Class Imbalance Alerts**: Multi-level warnings for classification datasets with severe skew.
 
-### Feature Selection
-- **Multi-method ranking** — Pearson, Spearman, Mutual Information, ANOVA-F, Chi², Random Forest importance
-- **VIF scores** — multicollinearity detection (color-coded green/amber/red)
-- **RFECV auto-select** — recursive feature elimination with cross-validation
-- **Feature engineering** — create derived features (A+B, A×B, A÷B, A−B) and re-analyze
-- **CSV + PDF export** of ranked feature table
+### 🔍 Advanced Feature Selection
+- **Multi-Method Ranking**: Features are ranked using a weighted ensemble of Pearson, Spearman, Mutual Information, ANOVA-F, Chi-Square, and Random Forest Importance.
+- **Multicollinearity (VIF)**: Detect redundant features with color-coded Variance Inflation Factor (VIF) scores.
+- **Auto-Selection (RFECV)**: Recursive Feature Elimination with Cross-Validation to find the optimal subset.
+- **Feature Engineering**: Create derived features ($A \times B$, $A \div B$, etc.) directly in the UI.
 
-### Model Training
-- **8 model types** — Linear/Ridge/LASSO Regression, Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost, Voting Ensemble, Stacking
-- **Cross-validation strategies** — train/test split, K-Fold, Stratified K-Fold, Leave-One-Out
-- **Bootstrap confidence intervals** on all metrics
-- **Auto-tune** — RandomizedSearchCV hyperparameter optimization per model
-- **Feature importance** + actual vs. predicted chart per model
-- **SHAP values** — mean absolute SHAP bar chart (falls back to model importance)
-- **Learning curves** — train vs. validation score across dataset sizes
+### 🤖 Automated Model Training
+- **Broad Model Support**: Train Linear/Ridge/LASSO, Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost, and complex Voting/Stacking ensembles.
+- **Hyperparameter Tuning**: Integrated `RandomizedSearchCV` to optimize model parameters automatically.
+- **Confidence Intervals**: 500-sample bootstrap intervals on all performance metrics.
+- **Explainability (SHAP)**: High-performance SHAP value visualizations for model transparency.
+- **Learning Curves**: Diagnose bias vs. variance with train/validation score plots across dataset sizes.
 
-### Visualization
-- **Scatter grid** — top feature vs. target scatter plots with regression lines
-- **Histograms** — distribution, KDE overlay, box plot, CDF per feature
-- **Correlation heatmap** — Pearson / Spearman / Kendall
-- **Partial Dependence Plots** — marginal effect of any feature on predictions
-- **PCA / t-SNE** — 2D projection of the feature space colored by target
-
-### Prediction & Evaluation
-- **Real-time prediction** — single-row what-if panel with instant output
-- **Batch prediction** — upload a CSV and download predictions
-- **Holdout evaluation** — upload a test dataset and get:
-  - Regression: scatter plot, residual plot, R², MAE, RMSE
-  - Classification: ROC-AUC curve, confusion matrix, calibration curve, accuracy, F1
-  - **Data drift detection** — KS test (numeric) + chi-square (categorical) vs. training distribution
+### 📈 Evaluation & Drift Detection
+- **Comprehensive Visuals**:
+  - **Regression**: Parity plots (actual vs. predicted) and Residual plots.
+  - **Classification**: ROC-AUC curves, Confusion Matrices, and Calibration curves.
+- **Data Drift Detection**: Integrated KS tests (numeric) and Chi-Square tests (categorical) to detect shifts between training and test distributions.
 
 ---
 
-## Stack
+## 🛠 Tech Stack
 
-| Layer | Technology |
+| Component | Technology |
 |---|---|
-| Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS, Recharts, Zustand |
-| Backend | FastAPI, Python 3.13, scikit-learn, scipy, statsmodels |
-| Optional ML | XGBoost, LightGBM, CatBoost, SHAP |
-| Infrastructure | Docker, docker-compose |
+| **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS, Recharts, Zustand |
+| **Backend** | FastAPI, Python 3.13, scikit-learn, SciPy, Statsmodels |
+| **ML Engines** | XGBoost, LightGBM, CatBoost, SHAP |
+| **DevOps** | Docker, Docker Compose, Makefile |
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.13+
-- Node.js 18+
+- [Python 3.13+](https://www.python.org/downloads/)
+- [Node.js 18+](https://nodejs.org/)
+- [Docker](https://www.docker.com/) (Optional)
 
-### 1. Clone
+### 1. Installation
 
 ```bash
-git clone https://github.com/your-username/predictpy.git
+# Clone the repository
+git clone https://github.com/PredictPy/predictpy.git
 cd predictpy
-```
 
-### 2. Install dependencies
-
-```bash
+# Install all dependencies (Backend + Frontend)
 make install
 ```
 
-Or manually:
+### 2. Environment Setup
 
 ```bash
-# Backend
-cd backend
-pip install --prefer-binary -r requirements.txt
-
-# Frontend
-cd frontend
-npm install
-```
-
-### 3. Configure environment
-
-```bash
+# Backend configuration
 cp backend/.env.example backend/.env
 ```
 
-The default `.env` works out of the box for local development.
+### 3. Running the App
 
-### 4. Run
-
-In two separate terminals:
-
-```bash
-# Terminal 1 — backend (http://localhost:8000)
-make backend
-
-# Terminal 2 — frontend (http://localhost:3000)
-make frontend
-```
-
-Or with Docker:
-
+Using Docker (Recommended):
 ```bash
 make docker-up
 ```
 
----
-
-## App Flow
-
-```
-Upload → Preview → Target → Features → Charts → Model → Predict → Evaluation
-```
-
-| Step | What happens |
-|---|---|
-| **Upload** | Drop a CSV / XLS / XLSX (up to 50 MB) |
-| **Preview** | Column profiles, missing values, outlier summary, skew badges |
-| **Target** | AI-suggested target column with confidence score, or choose manually |
-| **Features** | Multi-method ranked feature table with VIF, RFECV, feature engineering |
-| **Charts** | Scatter grid, histograms, correlation heatmap, PDP, PCA / t-SNE |
-| **Model** | Train all models, compare metrics with CI, view SHAP + learning curves |
-| **Predict** | Single-row prediction or batch CSV upload |
-| **Evaluation** | Holdout dataset evaluation with drift detection |
-
----
-
-## API Reference
-
-The backend exposes a REST API at `http://localhost:8000`. Interactive docs are available at [`/docs`](http://localhost:8000/docs).
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/upload` | Upload dataset, returns profile |
-| `POST` | `/suggest-target` | AI target column suggestions |
-| `POST` | `/analyze` | Run multi-method feature ranking |
-| `POST` | `/scatter` | Scatter plot data |
-| `POST` | `/distribution` | Histogram / KDE / box / CDF data |
-| `POST` | `/correlation-matrix` | Correlation heatmap data |
-| `POST` | `/outliers` | IQR + Z-score outlier counts per column |
-| `POST` | `/vif` | Variance Inflation Factor per feature |
-| `POST` | `/train` | Train and compare ML models |
-| `GET` | `/models` | List available models (reflects installed packages) |
-| `POST` | `/tune` | Hyperparameter tuning via RandomizedSearchCV |
-| `POST` | `/shap` | SHAP feature importance |
-| `POST` | `/learning-curve` | Learning curve data |
-| `POST` | `/pdp` | Partial Dependence Plot data |
-| `POST` | `/rfecv` | Recursive Feature Elimination with CV |
-| `POST` | `/reduce` | PCA / t-SNE dimensionality reduction |
-| `POST` | `/predict` | Single-row prediction |
-| `POST` | `/predict-batch` | Batch prediction from CSV |
-| `POST` | `/evaluate` | Holdout dataset evaluation + drift detection |
-| `POST` | `/engineer-feature` | Create derived feature column |
-| `DELETE` | `/session/{id}` | Clear session data |
-
----
-
-## Development
-
+Or manually:
 ```bash
-make lint       # ruff (backend) + eslint (frontend)
-make format     # ruff format + prettier
-make check      # TypeScript type check
-make build      # Production build (frontend)
+# Terminal 1: Backend
+make backend
+
+# Terminal 2: Frontend
+make frontend
 ```
 
----
-
-## Feature Selection Algorithm
-
-Features are ranked using a weighted combination of methods, normalized to [0, 1]:
-
-**Regression**
-
-| Method | Weight |
-|---|---|
-| Pearson correlation | 30% |
-| Spearman correlation | 25% |
-| Mutual Information | 25% |
-| Random Forest importance | 20% |
-
-**Classification**
-
-| Method | Weight |
-|---|---|
-| Mutual Information | 30% |
-| ANOVA-F | 25% |
-| Random Forest importance | 25% |
-| Chi² | 20% |
+The app will be available at:
+- **Frontend**: [http://localhost:3000](http://localhost:3000)
+- **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 
-## License
+## 🎯 App Workflow
 
-MIT
+1. **Upload** 📂: Drop your CSV or Excel file.
+2. **Preview** 👀: Inspect distribution stats and data health.
+3. **Target** 🎯: Select your target column (or let AI suggest one).
+4. **Features** 🧬: Rank features, check VIF, and select the best performers.
+5. **Charts** 📊: Visualize relationships with heatmaps and scatter grids.
+6. **Model** 🧠: Train, tune, and compare models with full metrics.
+7. **Evaluate** ✅: Upload a holdout set to check performance and data drift.
+
+---
+
+## 📋 API Reference
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/upload` | `POST` | Upload dataset and generate profile |
+| `/analyze` | `POST` | Execute multi-method feature ranking |
+| `/train` | `POST` | Train and compare multiple ML models |
+| `/evaluate` | `POST` | Evaluate model on holdout set |
+| `/predict` | `POST` | Single-row or batch CSV prediction |
+| `/shap` | `POST` | Calculate SHAP explainability values |
+
+---
+
+## ⚖️ License
+
+Distributed under the MIT License. See `LICENSE` for more information.
