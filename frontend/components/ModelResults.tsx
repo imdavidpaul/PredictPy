@@ -215,7 +215,7 @@ function ImportanceChart({ model }: { model: ModelResult }) {
           <XAxis
             type="number"
             tick={AXIS_TICK_STYLE}
-            tickFormatter={(v: number) => v.toFixed(3)}
+            tickFormatter={(v) => (typeof v === "number" ? v.toFixed(3) : v)}
           />
           <YAxis
             type="category"
@@ -227,7 +227,7 @@ function ImportanceChart({ model }: { model: ModelResult }) {
             contentStyle={RECHARTS_TOOLTIP_STYLE}
             itemStyle={{ color: "#e4e4e7" }}
             labelStyle={{ color: "#a1a1aa", marginBottom: 4 }}
-            formatter={(v: number | undefined) => [(v ?? 0).toFixed(6), "Importance"]}
+            formatter={(v: any) => [typeof v === "number" ? v.toFixed(6) : v, "Importance"]}
           />
           <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
             {top10.map((_, i) => (
@@ -536,7 +536,7 @@ function ROCCurveChart({ curves }: { curves: RocCurveEntry[] }) {
             type="number"
             domain={[0, 1]}
             tick={AXIS_TICK_STYLE}
-            tickFormatter={(v: number) => v.toFixed(1)}
+            tickFormatter={(v) => (typeof v === "number" ? v.toFixed(1) : v)}
             label={{
               value: "False Positive Rate (FPR)",
               position: "insideBottom",
@@ -549,7 +549,7 @@ function ROCCurveChart({ curves }: { curves: RocCurveEntry[] }) {
             type="number"
             domain={[0, 1]}
             tick={AXIS_TICK_STYLE}
-            tickFormatter={(v: number) => v.toFixed(1)}
+            tickFormatter={(v) => (typeof v === "number" ? v.toFixed(1) : v)}
             label={{
               value: "True Positive Rate (TPR)",
               angle: -90,
@@ -562,10 +562,10 @@ function ROCCurveChart({ curves }: { curves: RocCurveEntry[] }) {
             contentStyle={RECHARTS_TOOLTIP_STYLE}
             itemStyle={{ color: "#e4e4e7" }}
             labelStyle={{ color: "#a1a1aa", marginBottom: 4 }}
-            labelFormatter={(v: number) => `FPR: ${v.toFixed(4)}`}
-            formatter={(v: number | undefined, name: string) => {
-              if (name === "diagonal") return [null, null]
-              return [(v ?? 0).toFixed(4), name.replace("tpr_", "TPR ")]
+            labelFormatter={(v) => `FPR: ${typeof v === "number" ? v.toFixed(4) : v}`}
+            formatter={(v: any, name: any) => {
+              if (name === "diagonal") return [null, null] as any
+              return [(typeof v === "number" ? v.toFixed(4) : v), String(name).replace("tpr_", "TPR ")]
             }}
           />
 
