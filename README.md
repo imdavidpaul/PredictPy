@@ -50,49 +50,6 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 
 ---
 
-## 🚀 Getting Started
-
-### Prerequisites
-- [Python 3.13+](https://www.python.org/downloads/)
-- [Node.js 18+](https://nodejs.org/)
-- [Docker](https://www.docker.com/) (Optional)
-
-### 1. Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/danny/predictpy.git
-cd predictpy
-
-# Install all dependencies (Backend + Frontend)
-make install
-```
-
-### 2. Environment Setup
-
-```bash
-# Backend configuration
-cp backend/.env.example backend/.env
-```
-
-### 3. Running the App
-
-Using Docker (Recommended):
-```bash
-make docker-up
-```
-
-Or manually:
-```bash
-# Terminal 1: Backend
-make backend
-
-# Terminal 2: Frontend
-make frontend
-```
-
----
-
 ## 🎯 App Workflow
 
 1. **Upload** 📂: Drop your CSV or Excel file.
@@ -102,21 +59,6 @@ make frontend
 5. **Charts** 📊: Visualize relationships with heatmaps and scatter grids.
 6. **Model** 🧠: Train, tune, and compare models with full metrics.
 7. **Evaluate** ✅: Upload a holdout set to check performance and data drift.
-
----
-
-## 📋 API Reference
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/upload` | `POST` | Upload dataset and generate profile |
-| `/analyze` | `POST` | Execute multi-method feature ranking |
-| `/train` | `POST` | Train and compare multiple ML models |
-| `/evaluate` | `POST` | Evaluate model on holdout set |
-| `/predict` | `POST` | Single-row or batch CSV prediction |
-| `/shap` | `POST` | Calculate SHAP explainability values |
-
----
 
 ## ⚖️ License
 
