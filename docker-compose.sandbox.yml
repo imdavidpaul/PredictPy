@@ -1,0 +1,26 @@
+# PredictPy — Sandbox (Docker Hub)
+# Pull and run pre-built images from Docker Hub.
+#
+# Usage:
+#   docker compose -f docker-compose.sandbox.yml up
+#
+# Then open:
+#   Frontend → http://localhost:3000
+#   Backend  → http://localhost:8000/docs
+
+services:
+  backend:
+    image: imdavidpaul/predictpy:backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ALLOWED_ORIGINS=http://localhost:3000
+
+  frontend:
+    image: imdavidpaul/predictpy:frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend

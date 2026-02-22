@@ -59,6 +59,112 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 6. **Model** 🧠: Train, tune, and compare models with full metrics.
 7. **Evaluate** ✅: Upload a holdout set to check performance and data drift.
 
+## 🐳 Quick Start — Docker (Recommended)
+
+Run PredictPy on your own machine with no Python or Node.js setup required.
+Everything runs inside Docker using pre-built images from Docker Hub.
+
+### Prerequisites
+
+- Install **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** for your OS (Windows / macOS / Linux)
+- Make sure Docker Desktop is **running** before you proceed
+
+---
+
+### Step 1 — Download the compose file
+
+Download `docker-compose.sandbox.yml` from this repo into any folder on your machine.
+
+**Option A — Using curl (macOS / Linux / Git Bash on Windows):**
+```bash
+curl -O https://raw.githubusercontent.com/imdavidpaul/predictpy/main/docker-compose.sandbox.yml
+```
+
+**Option B — Manual download:**
+Click [docker-compose.sandbox.yml](./docker-compose.sandbox.yml) → **Raw** → Save As → save it to a folder.
+
+---
+
+### Step 2 — Pull images and start
+
+Open a terminal in the folder where you saved the file and run:
+
+```bash
+docker compose -f docker-compose.sandbox.yml up
+```
+
+Docker will automatically pull the latest images from Docker Hub:
+- `imdavidpaul/predictpy:backend`
+- `imdavidpaul/predictpy:frontend`
+
+> First run downloads ~500 MB. Subsequent starts are instant.
+
+---
+
+### Step 3 — Open the app
+
+Once you see `frontend` and `backend` both show `ready` in the terminal, open your browser:
+
+| Service | URL |
+|---|---|
+| **PredictPy App** | http://localhost:3000 |
+| **API Docs (Swagger)** | http://localhost:8000/docs |
+
+---
+
+### Step 4 — Stop the app
+
+Press `Ctrl + C` in the terminal, then run:
+
+```bash
+docker compose -f docker-compose.sandbox.yml down
+```
+
+---
+
+### Updating to the latest version
+
+To pull the newest images when a new version is released:
+
+```bash
+docker compose -f docker-compose.sandbox.yml pull
+docker compose -f docker-compose.sandbox.yml up
+```
+
+---
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Port 3000 or 8000 already in use | Stop any other app using those ports, or restart Docker Desktop |
+| `docker: command not found` | Docker Desktop is not installed or not running |
+| App loads but API calls fail | Make sure both containers are running: `docker ps` |
+| Blank page on http://localhost:3000 | Wait 10–15 seconds after startup for the frontend to initialize |
+
+---
+
+## 💻 Run Locally (Development)
+
+For contributors or developers who want to run from source:
+
+```bash
+# Backend — terminal 1
+cd backend
+pip install -r requirements.txt
+python -m uvicorn main:app --reload --port 8000
+
+# Frontend — terminal 2
+cd frontend
+npm install
+npm run dev
+```
+
+- Backend: http://localhost:8000
+- Frontend: http://localhost:3000
+
+---
+
 ## ⚖️ License
 
 Distributed under the MIT License. See `LICENSE` for more information.
