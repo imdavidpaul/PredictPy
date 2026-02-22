@@ -22,7 +22,7 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
   <p><i>Interactive Correlation Heatmaps (Pearson, Spearman, Kendall)</i></p>
 
   <br />
-
+ 
   <img src="screenshots/feature_distributions.png" width="800" alt="Feature Distributions">
   <p><i>Deep-dive Feature Distributions & Sub-group Analysis</i></p>
 
