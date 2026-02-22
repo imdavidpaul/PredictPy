@@ -10,6 +10,35 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 
 ---
 
+## 📸 Screenshots
+
+<div align="center">
+  <img src="screenshots/dataset_overview.png" width="800" alt="Dataset Overview">
+  <p><i>Comprehensive Data Profiling & Health Checks</i></p>
+
+  <br />
+
+  <img src="screenshots/correlation_matrix.png" width="800" alt="Correlation Matrix">
+  <p><i>Interactive Correlation Heatmaps (Pearson, Spearman, Kendall)</i></p>
+
+  <br />
+
+  <img src="screenshots/feature_distributions.png" width="800" alt="Feature Distributions">
+  <p><i>Deep-dive Feature Distributions & Sub-group Analysis</i></p>
+
+  <br />
+
+  <img src="screenshots/confusion_matrix.png" width="800" alt="Model Evaluation">
+  <p><i>Advanced Model Evaluation: Confusion Matrix & ROC-AUC</i></p>
+
+  <br />
+
+  <img src="screenshots/predictions.png" width="800" alt="What-If Predictor">
+  <p><i>Real-Time "What-If" Predictor & Batch Predictions</i></p>
+</div>
+
+---
+
 ## ✨ Key Features
 
 ### 📊 Exploratory Data Analysis (EDA)
