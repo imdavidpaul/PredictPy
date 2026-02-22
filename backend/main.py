@@ -781,7 +781,6 @@ async def evaluate(
     if not has_target:
         # Predictions-only mode: no ground truth available
         try:
-            from model_trainer import apply_meta
             X, _ = apply_meta(df_eval[feature_cols], meta)
             y_pred = model.predict(X)
             raw = [v.item() if hasattr(v, "item") else v for v in y_pred]
@@ -982,6 +981,7 @@ def delete_session(
 ) -> dict:
     """Remove a session and free its memory."""
     _sessions.pop(session_id, None)
+    _best_models.pop(session_id, None)
     return {"deleted": session_id}
 
 
