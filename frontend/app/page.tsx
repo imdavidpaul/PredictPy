@@ -1,8 +1,10 @@
 "use client"
 
-import { ArrowRight, Upload } from "lucide-react"
+import { ArrowRight, LogOut, Upload } from "lucide-react"
 import { HeroGeometric } from "@/components/ui/shape-landing-hero"
 import PredictpyLogo from "@/components/PredictpyLogo"
+import AuthGate from "@/components/AuthGate"
+import { useStore } from "@/store/useStore"
 import Link from "next/link"
 
 const FEATURE_PILLS = [
@@ -12,7 +14,9 @@ const FEATURE_PILLS = [
   "CSV & PDF export",
 ]
 
-export default function LandingPage() {
+function LandingPage() {
+  const { username, logout } = useStore()
+
   return (
     <>
       {/* Hero */}
@@ -49,7 +53,7 @@ export default function LandingPage() {
 
           {/* Sub-caption */}
           <p className="text-xs text-white/30 tracking-wide">
-            Free to use · No account required
+            Signed in as <span className="text-violet-400/70">{username}</span>
           </p>
 
           {/* Feature pills — improved contrast from white/30 to white/50 */}
@@ -88,9 +92,26 @@ export default function LandingPage() {
               </Link>
             ))}
           </nav>
-          <p className="text-xs text-white/25">© 2026 PredictPy</p>
+          <div className="flex items-center gap-4">
+            <p className="text-xs text-white/25">© 2026 PredictPy</p>
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors"
+            >
+              <LogOut className="w-3 h-3" />
+              Sign out
+            </button>
+          </div>
         </div>
       </footer>
     </>
+  )
+}
+
+export default function Page() {
+  return (
+    <AuthGate>
+      <LandingPage />
+    </AuthGate>
   )
 }
