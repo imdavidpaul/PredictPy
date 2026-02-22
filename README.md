@@ -28,6 +28,11 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 
   <br />
 
+  <img src="screenshots/scatter_plot.png" width="800" alt="Scatter Plot with Regression">
+  <p><i>Interactive Scatter Plots with Real-time Regression Analysis</i></p>
+
+  <br />
+
   <img src="screenshots/confusion_matrix.png" width="800" alt="Model Evaluation">
   <p><i>Advanced Model Evaluation: Confusion Matrix & ROC-AUC</i></p>
 
