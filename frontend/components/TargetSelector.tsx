@@ -141,7 +141,7 @@ export default function TargetSelector() {
             : "border-violet-500/40 text-violet-400 bg-violet-500/10 hover:bg-violet-500/15"
         )}
       >
-        {useManual ? "Use AI suggestions instead" : "Choose column manually"}
+        {useManual ? "Use Auto suggestions instead" : "Choose column manually"}
       </button>
 
       {useManual && (
