@@ -1,4 +1,5 @@
 import { useId } from "react"
+import Link from "next/link"
 
 interface Props {
   size?: "sm" | "md" | "lg"
@@ -15,7 +16,7 @@ export default function PredictpyLogo({ size = "md" }: Props) {
   const uid = useId().replace(/:/g, "")
 
   return (
-    <div className={`flex items-center ${gap}`}>
+    <Link href="/" className={`flex items-center ${gap}`}>
       {/* Icon */}
       <svg
         width={icon}
@@ -88,6 +89,6 @@ export default function PredictpyLogo({ size = "md" }: Props) {
           Py
         </span>
       </span>
-    </div>
+    </Link>
   )
 }
