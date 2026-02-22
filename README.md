@@ -62,7 +62,7 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 ## 🐳 Quick Start — Docker (Recommended)
 
 Run PredictPy on your own machine with no Python or Node.js setup required.
-Everything runs inside Docker using pre-built images from Docker Hub.
+Everything is built from source and served through an Nginx reverse proxy.
 
 ### Prerequisites
 
@@ -71,44 +71,40 @@ Everything runs inside Docker using pre-built images from Docker Hub.
 
 ---
 
-### Step 1 — Download the compose file
+### Step 1 — Clone the repository
 
-Download `docker-compose.sandbox.yml` from this repo into any folder on your machine.
-
-**Option A — Using curl (macOS / Linux / Git Bash on Windows):**
 ```bash
-curl -O https://raw.githubusercontent.com/imdavidpaul/PredictPy/master/docker-compose.sandbox.yml
+git clone https://github.com/imdavidpaul/PredictPy.git
+cd PredictPy
 ```
-
-**Option B — Manual download:**
-Click [docker-compose.sandbox.yml](./docker-compose.sandbox.yml) → **Raw** → Save As → save it to a folder.
 
 ---
 
-### Step 2 — Pull images and start
-
-Open a terminal in the folder where you saved the file and run:
+### Step 2 — Build and start
 
 ```bash
-docker compose -f docker-compose.sandbox.yml up
+docker compose -f docker-compose.sandbox.yml up --build
 ```
 
-Docker will automatically pull the latest images from Docker Hub:
-- `imdavidpaul/predictpy:backend`
-- `imdavidpaul/predictpy:frontend`
+Docker will build the backend and frontend images locally, then start three containers:
+- `backend` — FastAPI on port 8000 (internal)
+- `frontend` — Next.js on port 3000 (internal)
+- `nginx` — Reverse proxy, the only public entry point (port 80)
 
-> First run downloads ~500 MB. Subsequent starts are instant.
+> First build takes a few minutes. Subsequent starts (without `--build`) are instant.
 
 ---
 
 ### Step 3 — Open the app
 
-Once you see `frontend` and `backend` both show `ready` in the terminal, open your browser:
+Once you see all three containers running in the terminal, open your browser:
 
 | Service | URL |
 |---|---|
-| **PredictPy App** | http://localhost:3000 |
-| **API Docs (Swagger)** | http://localhost:8000/docs |
+| **PredictPy App** | http://localhost |
+| **API Docs (Swagger)** | http://localhost/api/docs |
+
+All traffic is routed through Nginx on port 80 — no need to open separate ports.
 
 ---
 
@@ -124,11 +120,11 @@ docker compose -f docker-compose.sandbox.yml down
 
 ### Updating to the latest version
 
-To pull the newest images when a new version is released:
+Pull the latest code and rebuild:
 
 ```bash
-docker compose -f docker-compose.sandbox.yml pull
-docker compose -f docker-compose.sandbox.yml up
+git pull
+docker compose -f docker-compose.sandbox.yml up --build
 ```
 
 ---
@@ -137,16 +133,16 @@ docker compose -f docker-compose.sandbox.yml up
 
 | Problem | Fix |
 |---|---|
-| Port 3000 or 8000 already in use | Stop any other app using those ports, or restart Docker Desktop |
+| Port 80 already in use | Stop any other app using port 80 (e.g. another web server), or restart Docker Desktop |
 | `docker: command not found` | Docker Desktop is not installed or not running |
-| App loads but API calls fail | Make sure both containers are running: `docker ps` |
-| Blank page on http://localhost:3000 | Wait 10–15 seconds after startup for the frontend to initialize |
+| App loads but API calls fail | Make sure all three containers are running: `docker ps` |
+| Blank page on http://localhost | Wait 10–15 seconds after startup for the frontend to initialize |
 
 ---
 
-## 🔨 Build from Source with Docker
+## 🔨 Build from Source with Docker (Dev)
 
-For contributors who want to build the Docker images locally from source:
+For contributors who want direct port access without Nginx (e.g. for debugging):
 
 ```bash
 # Build images only (without starting containers)
@@ -161,7 +157,7 @@ make docker-up      # build + start (detached)
 make docker-down    # stop and remove containers
 ```
 
-Once running, the app is available at the same URLs:
+This uses `docker-compose.yml` which exposes ports directly:
 
 | Service | URL |
 |---|---|
@@ -172,7 +168,7 @@ Once running, the app is available at the same URLs:
 
 ## 💻 Run Locally (Development)
 
-For contributors or developers who want to run from source:
+For contributors or developers who want to run from source without Docker:
 
 ```bash
 # Backend — terminal 1
@@ -183,11 +179,13 @@ python -m uvicorn main:app --reload --port 8000
 # Frontend — terminal 2
 cd frontend
 npm install
-npm run dev
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```
 
 - Backend: http://localhost:8000
 - Frontend: http://localhost:3000
+
+> `NEXT_PUBLIC_API_URL` must be set explicitly for local dev — it defaults to `/api` which only works through the Nginx proxy.
 
 ---
 
