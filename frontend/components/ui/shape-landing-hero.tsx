@@ -28,10 +28,10 @@ function ElegantShape({
       initial={{ opacity: 0, y: -150, rotate: rotate - 15 }}
       animate={{ opacity: 1, y: 0, rotate }}
       transition={{
-        duration: 2.4,
+        duration: 1.1,
         delay,
         ease: [0.23, 0.86, 0.39, 0.96] as [number, number, number, number],
-        opacity: { duration: 1.2 },
+        opacity: { duration: 0.6 },
       }}
       className={cn("absolute", className)}
     >

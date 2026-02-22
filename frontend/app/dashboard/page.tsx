@@ -1,24 +1,27 @@
 "use client"
 
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { RotateCcw, ChevronRight, ChevronLeft, Sparkles, AlertTriangle } from "lucide-react"
 import PredictpyLogo from "@/components/PredictpyLogo"
 import FileUpload from "@/components/FileUpload"
-import DatasetPreview from "@/components/DatasetPreview"
-import TargetSelector from "@/components/TargetSelector"
-import FeatureRanking from "@/components/FeatureRanking"
-import ScatterGrid from "@/components/ScatterGrid"
-import CorrelationHeatmap from "@/components/CorrelationHeatmap"
-import Histogram from "@/components/Histogram"
 import StepIndicator from "@/components/StepIndicator"
-import ModelTrainer from "@/components/ModelTrainer"
-import ModelResults from "@/components/ModelResults"
-import ModelEvaluation from "@/components/ModelEvaluation"
-import Predict from "@/components/Predict"
-import LearningCurve from "@/components/LearningCurve"
-import PartialDependence from "@/components/PartialDependence"
-import DimensionReduction from "@/components/DimensionReduction"
 import { useStore } from "@/store/useStore"
+
+// Lazy-load all heavy components — only bundled when the user reaches that step
+const DatasetPreview   = dynamic(() => import("@/components/DatasetPreview"))
+const TargetSelector   = dynamic(() => import("@/components/TargetSelector"))
+const FeatureRanking   = dynamic(() => import("@/components/FeatureRanking"))
+const ScatterGrid      = dynamic(() => import("@/components/ScatterGrid"))
+const CorrelationHeatmap = dynamic(() => import("@/components/CorrelationHeatmap"))
+const Histogram        = dynamic(() => import("@/components/Histogram"))
+const ModelTrainer     = dynamic(() => import("@/components/ModelTrainer"))
+const ModelResults     = dynamic(() => import("@/components/ModelResults"))
+const ModelEvaluation  = dynamic(() => import("@/components/ModelEvaluation"))
+const Predict          = dynamic(() => import("@/components/Predict"))
+const LearningCurve    = dynamic(() => import("@/components/LearningCurve"))
+const PartialDependence = dynamic(() => import("@/components/PartialDependence"))
+const DimensionReduction = dynamic(() => import("@/components/DimensionReduction"))
 
 const STEP_TITLES: Record<string, { title: string; subtitle: string }> = {
   upload: {
