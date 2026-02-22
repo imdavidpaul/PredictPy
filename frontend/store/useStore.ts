@@ -11,6 +11,10 @@ import type {
 } from "@/lib/types"
 
 interface AppState {
+  // Auth
+  token: string | null
+  username: string | null
+
   // Session
   sessionId: string | null
   filename: string | null
@@ -41,6 +45,8 @@ interface AppState {
   error: string | null
 
   // Actions
+  setAuth: (token: string, username: string) => void
+  logout: () => void
   setSession: (sessionId: string, filename: string) => void
   setProfile: (profile: DatasetProfile, hint: ProblemType) => void
   setTargetSuggestions: (suggestions: TargetSuggestion[]) => void
@@ -57,6 +63,8 @@ interface AppState {
 }
 
 const initialState = {
+  token: null,
+  username: null,
   sessionId: null,
   filename: null,
   currentStep: "upload" as AppStep,
@@ -79,6 +87,14 @@ export const useStore = create<AppState>()(
     (set) => ({
       ...initialState,
 
+      setAuth: (token, username) => {
+        if (typeof window !== "undefined") localStorage.setItem("predictpy_token", token)
+        set({ token, username })
+      },
+      logout: () => {
+        if (typeof window !== "undefined") localStorage.removeItem("predictpy_token")
+        set(initialState)
+      },
       setSession: (sessionId, filename) => set({ sessionId, filename }),
       setProfile: (profile, hint) => set({ profile, problemHint: hint }),
       setTargetSuggestions: (suggestions) => set({ targetSuggestions: suggestions }),
@@ -97,6 +113,8 @@ export const useStore = create<AppState>()(
     {
       name: "predictpy-session",
       partialize: (state) => ({
+        token: state.token,
+        username: state.username,
         sessionId: state.sessionId,
         filename: state.filename,
         currentStep: state.currentStep,

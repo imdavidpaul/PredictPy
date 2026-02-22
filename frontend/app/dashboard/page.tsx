@@ -19,6 +19,7 @@ import LearningCurve from "@/components/LearningCurve"
 import PartialDependence from "@/components/PartialDependence"
 import DimensionReduction from "@/components/DimensionReduction"
 import { useStore } from "@/store/useStore"
+import AuthGate from "@/components/AuthGate"
 
 const STEP_TITLES: Record<string, { title: string; subtitle: string }> = {
   upload: {
@@ -68,7 +69,7 @@ const UPLOAD_FEATURES = [
   "CSV + PDF export",
 ]
 
-export default function Dashboard() {
+function Dashboard() {
   const { currentStep, setStep, reset, filename, sessionId, modelResult } = useStore()
   const [showResetConfirm, setShowResetConfirm] = useState(false)
 
@@ -289,5 +290,13 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <AuthGate>
+      <Dashboard />
+    </AuthGate>
   )
 }
