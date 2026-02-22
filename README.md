@@ -144,6 +144,32 @@ docker compose -f docker-compose.sandbox.yml up
 
 ---
 
+## 🔨 Build from Source with Docker
+
+For contributors who want to build the Docker images locally from source:
+
+```bash
+# Build images only (without starting containers)
+docker compose build
+
+# Build and start containers in one step
+docker compose up --build
+
+# Or use make shortcuts
+make docker-build   # build only
+make docker-up      # build + start (detached)
+make docker-down    # stop and remove containers
+```
+
+Once running, the app is available at the same URLs:
+
+| Service | URL |
+|---|---|
+| **PredictPy App** | http://localhost:3000 |
+| **API Docs (Swagger)** | http://localhost:8000/docs |
+
+---
+
 ## 💻 Run Locally (Development)
 
 For contributors or developers who want to run from source:
