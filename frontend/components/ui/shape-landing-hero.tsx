@@ -28,10 +28,10 @@ function ElegantShape({
       initial={{ opacity: 0, y: -150, rotate: rotate - 15 }}
       animate={{ opacity: 1, y: 0, rotate }}
       transition={{
-        duration: 1.1,
+        duration: 0.6,
         delay,
         ease: [0.23, 0.86, 0.39, 0.96] as [number, number, number, number],
-        opacity: { duration: 0.6 },
+        opacity: { duration: 0.4 },
       }}
       className={cn("absolute", className)}
     >
@@ -78,8 +78,8 @@ function HeroGeometric({
       opacity: 1,
       y: 0,
       transition: {
-        duration: 1,
-        delay: 0.5 + i * 0.2,
+        duration: 0.6,
+        delay: 0.2 + i * 0.1,
         ease: [0.25, 0.4, 0.25, 1] as [number, number, number, number],
       },
     }),
@@ -93,7 +93,7 @@ function HeroGeometric({
       {/* Animated shapes */}
       <div className="absolute inset-0 overflow-hidden">
         <ElegantShape
-          delay={0.3}
+          delay={0.1}
           width={600}
           height={140}
           rotate={12}
@@ -101,7 +101,7 @@ function HeroGeometric({
           className="left-[-10%] md:left-[-5%] top-[15%] md:top-[20%]"
         />
         <ElegantShape
-          delay={0.5}
+          delay={0.2}
           width={500}
           height={120}
           rotate={-15}
@@ -109,7 +109,7 @@ function HeroGeometric({
           className="right-[-5%] md:right-[0%] top-[70%] md:top-[75%]"
         />
         <ElegantShape
-          delay={0.4}
+          delay={0.15}
           width={300}
           height={80}
           rotate={-8}
@@ -117,7 +117,7 @@ function HeroGeometric({
           className="left-[5%] md:left-[10%] bottom-[5%] md:bottom-[10%]"
         />
         <ElegantShape
-          delay={0.6}
+          delay={0.25}
           width={200}
           height={60}
           rotate={20}
@@ -125,7 +125,7 @@ function HeroGeometric({
           className="right-[15%] md:right-[20%] top-[10%] md:top-[15%]"
         />
         <ElegantShape
-          delay={0.7}
+          delay={0.3}
           width={150}
           height={40}
           rotate={-25}
