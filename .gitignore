@@ -1,6 +1,3 @@
-# ── Auth (never commit user credentials) ──────────────────────────────────────
-backend/users.json
-
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

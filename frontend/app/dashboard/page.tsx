@@ -19,7 +19,6 @@ import LearningCurve from "@/components/LearningCurve"
 import PartialDependence from "@/components/PartialDependence"
 import DimensionReduction from "@/components/DimensionReduction"
 import { useStore } from "@/store/useStore"
-import AuthGate from "@/components/AuthGate"
 
 const STEP_TITLES: Record<string, { title: string; subtitle: string }> = {
   upload: {
@@ -294,9 +293,5 @@ function Dashboard() {
 }
 
 export default function DashboardPage() {
-  return (
-    <AuthGate>
-      <Dashboard />
-    </AuthGate>
-  )
+  return <Dashboard />
 }
