@@ -13,9 +13,11 @@ Endpoints:
   GET  /health             -> Health check
 """
 
+import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
@@ -24,10 +26,14 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 # Load .env file (no-op if file doesn't exist — env vars already set)
 load_dotenv()
@@ -57,10 +63,30 @@ from model_trainer import apply_meta, evaluate_model, get_available_models, trai
 # App Setup
 # ---------------------------------------------------------------------------
 
+def _purge_expired() -> None:
+    now = time.time()
+    expired = [sid for sid, t in _session_created.items()
+               if now - t > SESSION_TTL_SECONDS]
+    for sid in expired:
+        _sessions.pop(sid, None)
+        _best_models.pop(sid, None)
+        _session_created.pop(sid, None)
+    if expired:
+        logger.info("Purged %d expired session(s).", len(expired))
+
+
+async def _cleanup_loop() -> None:
+    while True:
+        await asyncio.sleep(15 * 60)
+        _purge_expired()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("predictpy backend starting up.")
+    task = asyncio.create_task(_cleanup_loop())
     yield
+    task.cancel()
     logger.info("predictpy backend shutting down.")
 
 app = FastAPI(
@@ -83,11 +109,19 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/hour"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 # In-memory session stores (keyed by session_id UUID).
 # In production, replace with Redis or a database.
 _sessions: dict[str, pd.DataFrame] = {}
 # session_id -> {"model": fitted_model, "meta": preprocessing_meta}
 _best_models: dict[str, dict[str, Any]] = {}
+
+SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "7200"))  # 2 h default
+_session_created: dict[str, float] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +129,13 @@ _best_models: dict[str, dict[str, Any]] = {}
 # ---------------------------------------------------------------------------
 
 def _get_df(session_id: str) -> pd.DataFrame:
+    created = _session_created.get(session_id)
+    if created is not None and time.time() - created > SESSION_TTL_SECONDS:
+        _sessions.pop(session_id, None)
+        _best_models.pop(session_id, None)
+        _session_created.pop(session_id, None)
+        raise HTTPException(status_code=404,
+            detail="Session expired. Please upload a new file.")
     df = _sessions.get(session_id)
     if df is None:
         raise HTTPException(
@@ -220,7 +261,9 @@ def auth_login(body: AuthRequest) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/upload")
+@limiter.limit("10/hour")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
 ) -> dict[str, Any]:
     """
@@ -255,6 +298,7 @@ async def upload_file(
 
     session_id = str(uuid.uuid4())
     _sessions[session_id] = df
+    _session_created[session_id] = time.time()
     logger.info(
         "File uploaded: %s (%d rows, %d cols, %.1f KB)",
         file.filename, df.shape[0], df.shape[1], len(contents) / 1024,
@@ -801,7 +845,9 @@ def transform_feature(
 
 
 @app.post("/train")
+@limiter.limit("20/hour")
 def train(
+    request: Request,
     body: TrainRequest,
 ) -> dict[str, Any]:
     df = _get_df(body.session_id)
@@ -843,7 +889,9 @@ def train(
 
 
 @app.post("/evaluate")
+@limiter.limit("20/hour")
 async def evaluate(
+    request: Request,
     session_id: str = Form(...),
     target_column: str = Form(...),
     problem_type: str = Form(...),
@@ -1308,6 +1356,7 @@ def delete_session(
     """Remove a session and free its memory."""
     _sessions.pop(session_id, None)
     _best_models.pop(session_id, None)
+    _session_created.pop(session_id, None)
     return {"deleted": session_id}
 
 
@@ -1427,7 +1476,10 @@ class LearningCurveRequest(BaseModel):
 
 
 @app.post("/learning-curve")
-def get_learning_curve(body: LearningCurveRequest,
+@limiter.limit("20/hour")
+def get_learning_curve(
+    request: Request,
+    body: LearningCurveRequest,
 ) -> dict[str, Any]:
     """
     Compute learning curve: train at 5 dataset size fractions (10%→100%).
@@ -1558,7 +1610,10 @@ class RFECVRequest(BaseModel):
 
 
 @app.post("/rfecv")
-def run_rfecv(body: RFECVRequest,
+@limiter.limit("20/hour")
+def run_rfecv(
+    request: Request,
+    body: RFECVRequest,
 ) -> dict[str, Any]:
     """
     Run RFECV with RF estimator to find optimal feature subset.
@@ -1655,7 +1710,10 @@ _PARAM_GRIDS: dict[str, dict[str, list]] = {
 
 
 @app.post("/tune")
-def tune_hyperparams(body: TuneRequest,
+@limiter.limit("20/hour")
+def tune_hyperparams(
+    request: Request,
+    body: TuneRequest,
 ) -> dict[str, Any]:
     """
     Run RandomizedSearchCV (n_iter=20, cv=3) for the specified model.
