@@ -59,6 +59,45 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 6. **Model** 🧠: Train, tune, and compare models with full metrics.
 7. **Evaluate** ✅: Upload a holdout set to check performance and data drift.
 
+## 🖥️ Server Setup — Linux (Ubuntu / Debian)
+
+If you're deploying on a fresh Linux server (e.g. a VPS or cloud VM), install Docker and Docker Compose first.
+
+### Step 1 — Update the system
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+---
+
+### Step 2 — Install Docker
+
+```bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+```
+
+> This runs Docker's official convenience script and installs the latest Docker Engine automatically.
+
+---
+
+### Step 3 — Install Docker Compose
+
+```bash
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker-compose --version
+```
+
+> You should see output like `docker-compose version 1.29.0`. If so, you're ready to proceed.
+
+---
+
+Once Docker and Docker Compose are installed, continue with the Quick Start below.
+
+---
+
 ## 🐳 Quick Start — Docker (Recommended)
 
 Run PredictPy on your own machine with no Python or Node.js setup required.
