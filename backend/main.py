@@ -10,7 +10,7 @@ Endpoints:
   POST /correlation-matrix -> Get correlation matrix for heatmap
   POST /train              -> Train ML models on selected features
   GET  /models             -> List available model names
-  GET  /health             -> Health check (no auth)
+  GET  /health             -> Health check
 """
 
 import json
@@ -24,13 +24,10 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 from dotenv import load_dotenv
-import jwt as _pyjwt
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
-from auth import authenticate_user, create_access_token, create_user, verify_token
 
 # Load .env file (no-op if file doesn't exist — env vars already set)
 load_dotenv()
@@ -91,34 +88,6 @@ app.add_middleware(
 _sessions: dict[str, pd.DataFrame] = {}
 # session_id -> {"model": fitted_model, "meta": preprocessing_meta}
 _best_models: dict[str, dict[str, Any]] = {}
-# session_id -> user_id  (ownership registry)
-_session_owners: dict[str, str] = {}
-
-
-# ---------------------------------------------------------------------------
-# Auth helpers
-# ---------------------------------------------------------------------------
-
-_bearer = HTTPBearer()
-
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-) -> dict:
-    """FastAPI dependency — validates JWT and returns {user_id, username}."""
-    try:
-        return verify_token(credentials.credentials)
-    except _pyjwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-
-
-def _assert_owner(session_id: str, user_id: str) -> None:
-    """Raise 404 if session unknown, 403 if owned by someone else."""
-    owner = _session_owners.get(session_id)
-    if owner is None:
-        raise HTTPException(status_code=404, detail="Session not found.")
-    if owner != user_id:
-        raise HTTPException(status_code=403, detail="Access denied.")
 
 
 # ---------------------------------------------------------------------------
@@ -220,8 +189,6 @@ def health_check() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Endpoints -- Auth  (public)
-# ---------------------------------------------------------------------------
 
 
 class AuthRequest(BaseModel):
@@ -255,7 +222,6 @@ def auth_login(body: AuthRequest) -> dict:
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Upload a CSV or Excel file.
@@ -289,7 +255,6 @@ async def upload_file(
 
     session_id = str(uuid.uuid4())
     _sessions[session_id] = df
-    _session_owners[session_id] = current_user["user_id"]
     logger.info(
         "File uploaded: %s (%d rows, %d cols, %.1f KB)",
         file.filename, df.shape[0], df.shape[1], len(contents) / 1024,
@@ -324,13 +289,11 @@ class HandleMissingRequest(BaseModel):
 
 @app.post("/handle-missing")
 def handle_missing(body: HandleMissingRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Apply per-column imputation / removal strategies to the session DataFrame.
     Modifies the stored DataFrame in place and returns an updated dataset profile.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id).copy()
     rows_before = len(df)
 
@@ -389,9 +352,7 @@ def handle_missing(body: HandleMissingRequest,
 @app.post("/suggest-target")
 def suggest_target(
     body: SuggestTargetRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
     try:
         suggestions = suggest_target_columns(df)
@@ -403,9 +364,7 @@ def suggest_target(
 @app.post("/analyze")
 def analyze(
     body: AnalyzeRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
 
     if body.target_column not in df.columns:
@@ -431,9 +390,7 @@ def analyze(
 @app.post("/scatter")
 def scatter(
     body: ScatterRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
 
     for col in (body.feature_column, body.target_column):
@@ -458,9 +415,7 @@ def scatter(
 @app.post("/distribution")
 def get_distribution(
     body: dict,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    _assert_owner(body.get("session_id", ""), current_user["user_id"])
     session_id = body.get("session_id", "")
     column = body.get("column", "")
     target_column = body.get("target_column", "")
@@ -604,9 +559,7 @@ def get_distribution(
 @app.post("/correlation-matrix")
 def correlation_matrix(
     body: CorrelationRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
 
     if body.method not in ("pearson", "spearman", "kendall"):
@@ -627,7 +580,6 @@ def correlation_matrix(
 @app.get("/models")
 def list_models(
     problem_type: str = "regression",
-    current_user: dict = Depends(get_current_user)
 ) -> dict[str, Any]:
     """Return the list of available model names for the given problem type."""
     if problem_type not in ("regression", "classification"):
@@ -638,10 +590,8 @@ def list_models(
 @app.post("/engineer-feature")
 def engineer_feature(
     body: EngineerFeatureRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a new derived feature column in the session."""
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
 
     for col in (body.col_a, body.col_b):
@@ -688,10 +638,8 @@ def engineer_feature(
 @app.post("/drop-feature")
 def drop_feature(
     body: DropFeatureRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Remove a column from the session dataset."""
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
 
     if body.column not in df.columns:
@@ -712,7 +660,6 @@ def drop_feature(
 @app.post("/transform-feature")
 def transform_feature(
     body: TransformFeatureRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Apply a mathematical or statistical transform to create new feature(s).
@@ -730,7 +677,6 @@ def transform_feature(
       Multi-column (requires 'columns', list of 2+ numeric columns):
         polynomial   - Degree-2 polynomial features: A^2, B^2, A*B for each pair
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
 
     if body.transform not in VALID_TRANSFORMS:
@@ -857,9 +803,7 @@ def transform_feature(
 @app.post("/train")
 def train(
     body: TrainRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
 
     if body.target_column not in df.columns:
@@ -905,12 +849,10 @@ async def evaluate(
     problem_type: str = Form(...),
     feature_columns: str = Form(...),  # JSON string of list
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Evaluate the best trained model from the session on a NEW uploaded dataset.
     """
-    _assert_owner(session_id, current_user["user_id"])
     import json
     feature_cols = json.loads(feature_columns)
 
@@ -1003,10 +945,8 @@ def _nb_cell(cell_type: str, source: str) -> dict:
 
 @app.post("/export-notebook")
 def export_notebook(body: ExportNotebookRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> Response:
     """Generate and return a runnable Jupyter notebook (.ipynb) for the evaluation session."""
-    _assert_owner(body.session_id, current_user["user_id"])
     ev = body.evaluation_result
     problem_type = body.problem_type
     target = body.target_column
@@ -1209,13 +1149,11 @@ class PredictRequest(BaseModel):
 
 @app.post("/predict")
 def predict_single(body: PredictRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Single-row real-time prediction using stored model + preprocessing meta.
     Returns prediction, optional probabilities, prediction interval (RF regression), and warnings.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     model_data = _best_models.get(body.session_id)
     if model_data is None:
         raise HTTPException(
@@ -1296,12 +1234,10 @@ def predict_single(body: PredictRequest,
 async def predict_batch(
     session_id: str = Form(...),
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Batch prediction: upload a CSV/XLSX without the target column, get predictions back.
     """
-    _assert_owner(session_id, current_user["user_id"])
     model_data = _best_models.get(session_id)
     if model_data is None:
         raise HTTPException(
@@ -1368,13 +1304,10 @@ async def predict_batch(
 @app.delete("/session/{session_id}")
 def delete_session(
     session_id: str,
-    current_user: dict = Depends(get_current_user),
 ) -> dict:
     """Remove a session and free its memory."""
-    _assert_owner(session_id, current_user["user_id"])
     _sessions.pop(session_id, None)
     _best_models.pop(session_id, None)
-    _session_owners.pop(session_id, None)
     return {"deleted": session_id}
 
 
@@ -1389,13 +1322,11 @@ class OutlierRequest(BaseModel):
 
 @app.post("/outliers")
 def get_outliers(body: OutlierRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Detect outliers per column using Z-score (|z|>3) and IQR methods.
     Returns per-column counts and percentages.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     df = _get_df(body.session_id)
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
@@ -1442,13 +1373,11 @@ class VIFRequest(BaseModel):
 
 @app.post("/vif")
 def get_vif(body: VIFRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Compute Variance Inflation Factor (VIF) for selected feature columns.
     Returns [{feature, vif}] sorted descending by VIF.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     try:
         from statsmodels.stats.outliers_influence import variance_inflation_factor
     except ImportError:
@@ -1499,13 +1428,11 @@ class LearningCurveRequest(BaseModel):
 
 @app.post("/learning-curve")
 def get_learning_curve(body: LearningCurveRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Compute learning curve: train at 5 dataset size fractions (10%→100%).
     Returns [{train_size, train_score, val_score}].
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     from model_trainer import _prepare, REGRESSION_MODELS, CLASSIFICATION_MODELS
 
     df = _get_df(body.session_id)
@@ -1580,13 +1507,11 @@ class PDPRequest(BaseModel):
 
 @app.post("/pdp")
 def get_pdp(body: PDPRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Compute partial dependence for a feature using the stored best model.
     Returns {values, average} arrays.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     from sklearn.inspection import partial_dependence
 
     model_data = _best_models.get(body.session_id)
@@ -1634,13 +1559,11 @@ class RFECVRequest(BaseModel):
 
 @app.post("/rfecv")
 def run_rfecv(body: RFECVRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Run RFECV with RF estimator to find optimal feature subset.
     Returns {optimal_features, ranking, cv_scores}.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     from sklearn.feature_selection import RFECV
 
     df = _get_df(body.session_id)
@@ -1733,13 +1656,11 @@ _PARAM_GRIDS: dict[str, dict[str, list]] = {
 
 @app.post("/tune")
 def tune_hyperparams(body: TuneRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Run RandomizedSearchCV (n_iter=20, cv=3) for the specified model.
     Returns {best_params, best_score, results}.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     from sklearn.model_selection import RandomizedSearchCV
     from model_trainer import _prepare, REGRESSION_MODELS, CLASSIFICATION_MODELS
 
@@ -1815,13 +1736,11 @@ class ReduceRequest(BaseModel):
 
 @app.post("/reduce")
 def reduce_dimensions(body: ReduceRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Reduce features to 2D using PCA or t-SNE.
     Returns {points: [{x, y, target}], explained_variance (PCA only)}.
     """
-    _assert_owner(body.session_id, current_user["user_id"])
     from model_trainer import _prepare
 
     df = _get_df(body.session_id)

@@ -1,6 +1,5 @@
 import type {
   AnalyzeResponse,
-  AuthResponse,
   BatchPredictResponse,
   CorrelationMatrixResponse,
   DistributionResponse,
@@ -29,32 +28,12 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api"
 
-const TOKEN_KEY = "predictpy_token"
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null
-  return localStorage.getItem(TOKEN_KEY)
-}
-
-export function setToken(token: string | null): void {
-  if (typeof window === "undefined") return
-  if (token) localStorage.setItem(TOKEN_KEY, token)
-  else localStorage.removeItem(TOKEN_KEY)
-}
-
 async function request<T>(path: string, options: RequestInit): Promise<T> {
-  const token = getToken()
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   }
-  if (token) headers["Authorization"] = `Bearer ${token}`
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
-
-  if (res.status === 401) {
-    // Token expired or invalid — clear it so AuthGate shows login
-    setToken(null)
-  }
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`
@@ -68,26 +47,6 @@ async function request<T>(path: string, options: RequestInit): Promise<T> {
   }
 
   return res.json() as Promise<T>
-}
-
-// ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
-
-export async function register(username: string, password: string): Promise<AuthResponse> {
-  return request<AuthResponse>("/auth/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  })
-}
-
-export async function login(username: string, password: string): Promise<AuthResponse> {
-  return request<AuthResponse>("/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  })
 }
 
 // ---------------------------------------------------------------------------

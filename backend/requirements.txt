@@ -12,5 +12,3 @@ statsmodels==0.14.4
 xgboost>=2.1.0
 lightgbm>=4.5.0
 catboost>=1.2.0
-PyJWT>=2.8.0
-passlib[bcrypt]>=1.7.4
