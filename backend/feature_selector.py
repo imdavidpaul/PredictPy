@@ -24,9 +24,8 @@ from sklearn.feature_selection import (
     mutual_info_regression,
     chi2,
     f_classif,
-    f_regression,
 )
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from preprocessing import encode_col
 
 
 # ---------------------------------------------------------------------------
@@ -166,13 +165,6 @@ def suggest_target_columns(df: pd.DataFrame) -> list[dict]:
 # Preprocessing Helpers
 # ---------------------------------------------------------------------------
 
-def _encode_column(series: pd.Series) -> pd.Series:
-    """Label-encode a non-numeric column for statistical tests."""
-    le = LabelEncoder()
-    filled = series.fillna("__MISSING__").astype(str)
-    return pd.Series(le.fit_transform(filled), index=series.index, name=series.name)
-
-
 def _prepare_features(df: pd.DataFrame, target_col: str) -> tuple[pd.DataFrame, pd.Series]:
     """
     Return (X, y) after:
@@ -185,14 +177,14 @@ def _prepare_features(df: pd.DataFrame, target_col: str) -> tuple[pd.DataFrame, 
 
     # Encode target if categorical
     if not pd.api.types.is_numeric_dtype(y):
-        y = _encode_column(y)
+        y = encode_col(y)[0]
     else:
         y = y.fillna(y.median())
 
     # Encode / fill features
     for col in X.columns:
         if not pd.api.types.is_numeric_dtype(X[col]):
-            X[col] = _encode_column(X[col])
+            X[col] = encode_col(X[col])[0]
         else:
             X[col] = X[col].fillna(X[col].median())
 
@@ -460,7 +452,7 @@ def compute_correlation_matrix(
     subset = df[columns].copy()
     for col in subset.columns:
         if not pd.api.types.is_numeric_dtype(subset[col]):
-            subset[col] = _encode_column(subset[col])
+            subset[col] = encode_col(subset[col])[0]
         subset[col] = subset[col].fillna(subset[col].median())
 
     corr_matrix = subset.corr(method=method)
@@ -501,9 +493,9 @@ def get_scatter_data(
     subset = df[[feature_col, target_col]].dropna().copy()
 
     if not pd.api.types.is_numeric_dtype(subset[feature_col]):
-        subset[feature_col] = _encode_column(subset[feature_col])
+        subset[feature_col] = encode_col(subset[feature_col])[0]
     if not pd.api.types.is_numeric_dtype(subset[target_col]):
-        subset[target_col] = _encode_column(subset[target_col])
+        subset[target_col] = encode_col(subset[target_col])[0]
 
     # Downsample
     if len(subset) > max_points:

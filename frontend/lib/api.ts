@@ -5,6 +5,7 @@ import type {
   DistributionResponse,
   EngineerFeatureRequest,
   EngineerFeatureResponse,
+  HandleMissingResponse,
   LearningCurveResponse,
   OutlierResponse,
   PDPResponse,
@@ -52,6 +53,17 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
   const form = new FormData()
   form.append("file", file)
   return request<UploadResponse>("/upload", { method: "POST", body: form })
+}
+
+export async function handleMissing(params: {
+  session_id: string
+  strategies: Record<string, string>
+}): Promise<HandleMissingResponse> {
+  return request<HandleMissingResponse>("/handle-missing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
 }
 
 export async function suggestTarget(sessionId: string): Promise<SuggestTargetResponse> {

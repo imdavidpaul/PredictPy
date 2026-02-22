@@ -46,6 +46,7 @@ from sklearn.model_selection import (
     train_test_split,
 )
 from sklearn.preprocessing import LabelEncoder, label_binarize
+from preprocessing import encode_col
 
 try:
     from sklearn.calibration import calibration_curve
@@ -203,15 +204,8 @@ def get_available_models(problem_type: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Preprocessing (mirrors feature_selector.py approach)
+# Preprocessing
 # ---------------------------------------------------------------------------
-
-def _encode_col(series: pd.Series) -> tuple[pd.Series, LabelEncoder]:
-    le = LabelEncoder()
-    filled = series.fillna("__MISSING__").astype(str)
-    encoded = pd.Series(le.fit_transform(filled), index=series.index, name=series.name)
-    return encoded, le
-
 
 def _prepare(
     df: pd.DataFrame,
@@ -235,7 +229,7 @@ def _prepare(
     }
 
     if not pd.api.types.is_numeric_dtype(y):
-        y, le = _encode_col(y)
+        y, le = encode_col(y)
         meta["target_encoder"] = le
     else:
         y = y.fillna(y.median())
@@ -245,7 +239,7 @@ def _prepare(
             # Store raw categorical values before encoding (sample up to 1000)
             raw = df[col].dropna().astype(str).tolist()
             meta["train_distributions"][col] = raw[:1000]
-            X[col], le = _encode_col(X[col])
+            X[col], le = encode_col(X[col])
             meta["encoders"][col] = le
         else:
             median = float(X[col].median())
