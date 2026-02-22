@@ -1,26 +1,42 @@
-# PredictPy — Sandbox (Docker Hub)
-# Pull and run pre-built images from Docker Hub.
+# PredictPy — Sandbox (local build)
+# Builds images from source and serves everything through Nginx on port 80.
 #
 # Usage:
-#   docker compose -f docker-compose.sandbox.yml up
+#   docker compose -f docker-compose.sandbox.yml up --build
 #
 # Then open:
-#   Frontend → http://localhost:3000
-#   Backend  → http://localhost:8000/docs
+#   App  → http://localhost
+#   Docs → http://localhost/api/docs
 
 services:
   backend:
-    image: imdavidpaul/predictpy:backend
-    ports:
-      - "8000:8000"
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    expose:
+      - "8000"
     environment:
-      - ALLOWED_ORIGINS=http://localhost:3000
+      - ALLOWED_ORIGINS=http://localhost
 
   frontend:
-    image: imdavidpaul/predictpy:frontend
-    ports:
-      - "3000:3000"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=/api
+    expose:
+      - "3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=/api
     depends_on:
       - backend
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
