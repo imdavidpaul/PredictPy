@@ -2,7 +2,9 @@
 # Usage: make <target>
 # On Windows, install Make via: winget install GnuWin32.Make
 
-.PHONY: dev backend frontend install lint format check docker-up docker-down docker-build
+.PHONY: dev backend frontend install lint format check docker-up docker-down docker-build docker-push sandbox-up sandbox-down
+
+DOCKER_HUB := imdavidpaul/predictpy
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 
@@ -68,3 +70,33 @@ docker-down:
 ## Build docker images without starting containers
 docker-build:
 	docker-compose build
+
+## Build and push images to Docker Hub (imdavidpaul/predictpy)
+## Usage: make docker-push   or   make docker-push TAG=v1.2
+TAG ?= latest
+docker-push:
+	@echo "Building backend..."
+	docker build -t $(DOCKER_HUB):backend ./backend
+	@echo "Building frontend (NEXT_PUBLIC_API_URL=http://localhost:8000)..."
+	docker build \
+		--build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 \
+		-t $(DOCKER_HUB):frontend ./frontend
+	@echo "Pushing to Docker Hub..."
+	docker push $(DOCKER_HUB):backend
+	docker push $(DOCKER_HUB):frontend
+	@echo "Done — imdavidpaul/predictpy:backend + :frontend pushed."
+
+# ── Sandbox ───────────────────────────────────────────────────────────────────
+
+## Pull pre-built images from Docker Hub and start the sandbox
+sandbox-up:
+	docker compose -f docker-compose.sandbox.yml pull
+	docker compose -f docker-compose.sandbox.yml up -d
+	@echo ""
+	@echo "  PredictPy is running!"
+	@echo "  Frontend -> http://localhost:3000"
+	@echo "  Backend  -> http://localhost:8000/docs"
+
+## Stop the sandbox
+sandbox-down:
+	docker compose -f docker-compose.sandbox.yml down
