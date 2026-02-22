@@ -10,8 +10,10 @@ Trains multiple ML models on selected features and returns:
 """
 
 import base64
+import logging
 import pickle
 import random
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -80,6 +82,31 @@ except ImportError:
     HAS_CATBOOST = False
 
 # ---------------------------------------------------------------------------
+# CUDA / GPU Detection
+# ---------------------------------------------------------------------------
+
+_logger = logging.getLogger("predictpy")
+
+
+def _detect_cuda() -> bool:
+    """Return True if a CUDA-capable GPU is available (checks nvidia-smi)."""
+    try:
+        r = subprocess.run(
+            ["nvidia-smi"], capture_output=True, timeout=5
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+CUDA_AVAILABLE: bool = _detect_cuda()
+_logger.info(
+    "GPU detected — gradient boosters will use CUDA acceleration."
+    if CUDA_AVAILABLE
+    else "No CUDA GPU detected — using CPU for all models."
+)
+
+# ---------------------------------------------------------------------------
 # Model Registries
 # ---------------------------------------------------------------------------
 
@@ -96,33 +123,37 @@ CLASSIFICATION_MODELS: dict[str, Any] = {
 }
 
 if HAS_XGBOOST:
-    REGRESSION_MODELS["XGBoost"] = lambda: XGBRegressor(
+    # XGBoost 2.0+: device="cuda" enables GPU; older versions used tree_method="gpu_hist"
+    _xgb_kw = {"device": "cuda"} if CUDA_AVAILABLE else {"n_jobs": -1}
+    REGRESSION_MODELS["XGBoost"] = lambda kw=_xgb_kw: XGBRegressor(
         n_estimators=300, learning_rate=0.05, max_depth=6,
-        random_state=42, verbosity=0, n_jobs=-1,
+        random_state=42, verbosity=0, **kw,
     )
-    CLASSIFICATION_MODELS["XGBoost"] = lambda: XGBClassifier(
+    CLASSIFICATION_MODELS["XGBoost"] = lambda kw=_xgb_kw: XGBClassifier(
         n_estimators=300, learning_rate=0.05, max_depth=6,
-        random_state=42, verbosity=0, n_jobs=-1, eval_metric="logloss",
+        random_state=42, verbosity=0, eval_metric="logloss", **kw,
     )
 
 if HAS_LIGHTGBM:
-    REGRESSION_MODELS["LightGBM"] = lambda: LGBMRegressor(
+    _lgbm_kw = {"device": "gpu"} if CUDA_AVAILABLE else {"n_jobs": -1}
+    REGRESSION_MODELS["LightGBM"] = lambda kw=_lgbm_kw: LGBMRegressor(
         n_estimators=300, learning_rate=0.05, num_leaves=31,
-        random_state=42, verbose=-1, n_jobs=-1,
+        random_state=42, verbose=-1, **kw,
     )
-    CLASSIFICATION_MODELS["LightGBM"] = lambda: LGBMClassifier(
+    CLASSIFICATION_MODELS["LightGBM"] = lambda kw=_lgbm_kw: LGBMClassifier(
         n_estimators=300, learning_rate=0.05, num_leaves=31,
-        random_state=42, verbose=-1, n_jobs=-1,
+        random_state=42, verbose=-1, **kw,
     )
 
 if HAS_CATBOOST:
-    REGRESSION_MODELS["CatBoost"] = lambda: CatBoostRegressor(
+    _cb_kw = {"task_type": "GPU", "devices": "0"} if CUDA_AVAILABLE else {}
+    REGRESSION_MODELS["CatBoost"] = lambda kw=_cb_kw: CatBoostRegressor(
         iterations=300, learning_rate=0.05, depth=6,
-        random_seed=42, verbose=False,
+        random_seed=42, verbose=False, **kw,
     )
-    CLASSIFICATION_MODELS["CatBoost"] = lambda: CatBoostClassifier(
+    CLASSIFICATION_MODELS["CatBoost"] = lambda kw=_cb_kw: CatBoostClassifier(
         iterations=300, learning_rate=0.05, depth=6,
-        random_seed=42, verbose=False,
+        random_seed=42, verbose=False, **kw,
     )
 
 
