@@ -9,19 +9,19 @@ import StepIndicator from "@/components/StepIndicator"
 import { useStore } from "@/store/useStore"
 
 // Lazy-load all heavy components — only bundled when the user reaches that step
-const DatasetPreview   = dynamic(() => import("@/components/DatasetPreview"))
-const TargetSelector   = dynamic(() => import("@/components/TargetSelector"))
-const FeatureRanking   = dynamic(() => import("@/components/FeatureRanking"))
-const ScatterGrid      = dynamic(() => import("@/components/ScatterGrid"))
-const CorrelationHeatmap = dynamic(() => import("@/components/CorrelationHeatmap"))
-const Histogram        = dynamic(() => import("@/components/Histogram"))
-const ModelTrainer     = dynamic(() => import("@/components/ModelTrainer"))
-const ModelResults     = dynamic(() => import("@/components/ModelResults"))
-const ModelEvaluation  = dynamic(() => import("@/components/ModelEvaluation"))
-const Predict          = dynamic(() => import("@/components/Predict"))
-const LearningCurve    = dynamic(() => import("@/components/LearningCurve"))
-const PartialDependence = dynamic(() => import("@/components/PartialDependence"))
-const DimensionReduction = dynamic(() => import("@/components/DimensionReduction"))
+const DatasetPreview   = dynamic(() => import("@/components/DatasetPreview"), { ssr: false })
+const TargetSelector   = dynamic(() => import("@/components/TargetSelector"), { ssr: false })
+const FeatureRanking   = dynamic(() => import("@/components/FeatureRanking"), { ssr: false })
+const ScatterGrid      = dynamic(() => import("@/components/ScatterGrid"), { ssr: false })
+const CorrelationHeatmap = dynamic(() => import("@/components/CorrelationHeatmap"), { ssr: false })
+const Histogram        = dynamic(() => import("@/components/Histogram"), { ssr: false })
+const ModelTrainer     = dynamic(() => import("@/components/ModelTrainer"), { ssr: false })
+const ModelResults     = dynamic(() => import("@/components/ModelResults"), { ssr: false })
+const ModelEvaluation  = dynamic(() => import("@/components/ModelEvaluation"), { ssr: false })
+const Predict          = dynamic(() => import("@/components/Predict"), { ssr: false })
+const LearningCurve    = dynamic(() => import("@/components/LearningCurve"), { ssr: false })
+const PartialDependence = dynamic(() => import("@/components/PartialDependence"), { ssr: false })
+const DimensionReduction = dynamic(() => import("@/components/DimensionReduction"), { ssr: false })
 
 const STEP_TITLES: Record<string, { title: string; subtitle: string }> = {
   upload: {
