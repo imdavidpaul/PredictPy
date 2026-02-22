@@ -77,7 +77,7 @@ Download `docker-compose.sandbox.yml` from this repo into any folder on your mac
 
 **Option A — Using curl (macOS / Linux / Git Bash on Windows):**
 ```bash
-curl -O https://raw.githubusercontent.com/imdavidpaul/predictpy/main/docker-compose.sandbox.yml
+curl -O https://raw.githubusercontent.com/imdavidpaul/PredictPy/master/docker-compose.sandbox.yml
 ```
 
 **Option B — Manual download:**
