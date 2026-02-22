@@ -62,7 +62,6 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 - **Broad Model Support**: Train Linear/Ridge/LASSO, Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost, and complex Voting/Stacking ensembles.
 - **Hyperparameter Tuning**: Integrated `RandomizedSearchCV` to optimize model parameters automatically.
 - **Confidence Intervals**: 500-sample bootstrap intervals on all performance metrics.
-- **Explainability (SHAP)**: High-performance SHAP value visualizations for model transparency.
 - **Learning Curves**: Diagnose bias vs. variance with train/validation score plots across dataset sizes.
 
 ### 📈 Evaluation & Drift Detection
@@ -79,7 +78,7 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 |---|---|
 | **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS, Recharts, Zustand |
 | **Backend** | FastAPI, Python 3.13, scikit-learn, SciPy, Statsmodels |
-| **ML Engines** | XGBoost, LightGBM, CatBoost, SHAP |
+| **ML Engines** | XGBoost, LightGBM, CatBoost |
 
 ---
 
