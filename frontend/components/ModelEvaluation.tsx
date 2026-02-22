@@ -9,6 +9,7 @@ import {
   Loader2,
   LineChart as LineChartIcon,
   ScatterChart as ScatterChartIcon,
+  FileDown,
 } from "lucide-react"
 import {
   ResponsiveContainer,
@@ -25,7 +26,7 @@ import {
   Area,
 } from "recharts"
 import { cn } from "@/lib/utils"
-import { evaluateModel } from "@/lib/api"
+import { evaluateModel, exportNotebook } from "@/lib/api"
 import { useStore } from "@/store/useStore"
 import type { DriftFeature } from "@/lib/types"
 
@@ -433,6 +434,32 @@ export default function ModelEvaluation() {
   } = useStore()
 
   const [filename, setFilename] = useState<string | null>(null)
+  const [exportingNotebook, setExportingNotebook] = useState(false)
+
+  const handleExportNotebook = useCallback(async () => {
+    if (!evaluationResult || !sessionId || !selectedTarget || !selectedProblemType) return
+    setExportingNotebook(true)
+    setError(null)
+    try {
+      const blob = await exportNotebook({
+        session_id: sessionId,
+        target_column: selectedTarget,
+        feature_columns: selectedFeatureColumns,
+        problem_type: selectedProblemType,
+        evaluation_result: evaluationResult,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "predictpy_evaluation.ipynb"
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export notebook.")
+    } finally {
+      setExportingNotebook(false)
+    }
+  }, [evaluationResult, sessionId, selectedTarget, selectedProblemType, selectedFeatureColumns, setError])
 
   const processEvalFile = useCallback(
     async (file: File) => {
@@ -570,12 +597,22 @@ export default function ModelEvaluation() {
                 <p className="text-lg font-bold text-zinc-100">{filename}</p>
               </div>
             </div>
-            <button
-              onClick={() => setEvaluationResult(null)}
-              className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition-all"
-            >
-              Test Another File
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExportNotebook}
+                disabled={exportingNotebook}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                <FileDown className="w-4 h-4" />
+                {exportingNotebook ? "Generating…" : "Export Notebook (.ipynb)"}
+              </button>
+              <button
+                onClick={() => setEvaluationResult(null)}
+                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition-all"
+              >
+                Test Another File
+              </button>
+            </div>
           </div>
 
           {/* Predictions-only mode */}

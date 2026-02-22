@@ -312,3 +312,34 @@ export async function reduceDimensions(params: {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Export Notebook
+// ---------------------------------------------------------------------------
+
+export async function exportNotebook(params: {
+  session_id: string
+  target_column: string
+  feature_columns: string[]
+  problem_type: string
+  evaluation_result: EvaluationResult
+}): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}/export-notebook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`
+    try {
+      const body = await res.json()
+      message = body?.detail ?? message
+    } catch {
+      // ignore parse error
+    }
+    throw new Error(message)
+  }
+
+  return res.blob()
+}
+
