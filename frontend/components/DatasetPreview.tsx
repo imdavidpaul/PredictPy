@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react"
+import { ChevronDown, ChevronUp, CheckCircle2, Wrench, Loader2, AlertCircle } from "lucide-react"
 import { useStore } from "@/store/useStore"
 import { formatPct } from "@/lib/utils"
-import { getOutliers } from "@/lib/api"
-import type { OutlierColumn } from "@/lib/types"
+import { getOutliers, handleMissing } from "@/lib/api"
+import type { MissingColumnData, OutlierColumn } from "@/lib/types"
 import {
   BarChart,
   Bar,
@@ -51,11 +51,22 @@ function TransformPill({ t }: { t: "log" | "sqrt" | "none" }) {
   )
 }
 
+function defaultStrategy(col: MissingColumnData, isNumeric: boolean): string {
+  return isNumeric ? "median" : "mode"
+}
+
 export default function DatasetPreview() {
-  const { profile, filename, problemHint, sessionId } = useStore()
+  const { profile, filename, problemHint, sessionId, setProfile } = useStore()
   const [outlierData, setOutlierData] = useState<OutlierColumn[] | null>(null)
   const [outlierOpen, setOutlierOpen] = useState(false)
   const [outlierLoading, setOutlierLoading] = useState(false)
+
+  // Missing value handler state
+  const [strategies, setStrategies] = useState<Record<string, string>>({})
+  const [constants, setConstants] = useState<Record<string, string>>({})
+  const [applying, setApplying] = useState(false)
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const [applyResult, setApplyResult] = useState<{ rows_dropped: number; cols_dropped: string[] } | null>(null)
 
   useEffect(() => {
     if (!sessionId || !profile) return
@@ -65,6 +76,41 @@ export default function DatasetPreview() {
       .catch(() => setOutlierData(null))
       .finally(() => setOutlierLoading(false))
   }, [sessionId, profile])
+
+  // Initialise per-column strategy defaults whenever missing columns change
+  useEffect(() => {
+    if (!profile) return
+    const { column_profiles, missing_values } = profile
+    const init: Record<string, string> = {}
+    for (const mc of missing_values.columns_data) {
+      const cp = column_profiles.find((p) => p.column === mc.column)
+      const isNumeric = cp?.mean !== undefined
+      init[mc.column] = defaultStrategy(mc, isNumeric)
+    }
+    setStrategies(init)
+    setApplyResult(null)
+  }, [profile])
+
+  const handleApply = async () => {
+    if (!sessionId || !problemHint) return
+    setApplying(true)
+    setApplyError(null)
+    try {
+      const strats: Record<string, string> = {}
+      for (const [col, strat] of Object.entries(strategies)) {
+        strats[col] = strat === "constant"
+          ? `constant:${constants[col] ?? "0"}`
+          : strat
+      }
+      const res = await handleMissing({ session_id: sessionId, strategies: strats })
+      setProfile(res.profile, problemHint)
+      setApplyResult({ rows_dropped: res.rows_dropped, cols_dropped: res.cols_dropped })
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : "Failed to apply strategies.")
+    } finally {
+      setApplying(false)
+    }
+  }
 
   if (!profile) return null
 
@@ -178,6 +224,144 @@ export default function DatasetPreview() {
           <div>
             <p className="text-green-400 font-semibold text-sm">No missing values</p>
             <p className="text-xs text-zinc-500 mt-0.5">Your dataset is complete across all columns</p>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Missing Value Handler                                              */}
+      {/* ------------------------------------------------------------------ */}
+
+      {/* Success banner — persists even after missingCols clears */}
+      {applyResult && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+          <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0 mt-0.5" />
+          <div className="text-sm space-y-0.5">
+            <p className="text-green-300 font-medium">Missing values handled successfully</p>
+            <p className="text-zinc-400 text-xs">
+              {applyResult.rows_dropped > 0 && `${applyResult.rows_dropped} row${applyResult.rows_dropped !== 1 ? "s" : ""} dropped. `}
+              {applyResult.cols_dropped.length > 0 && `Columns removed: ${applyResult.cols_dropped.join(", ")}. `}
+              {applyResult.rows_dropped === 0 && applyResult.cols_dropped.length === 0 && "All missing cells filled. "}
+              Dataset updated — proceed to Target selection.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Handler panel — only visible while missing columns remain */}
+      {missingCols.length > 0 && (
+        <div className="rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Wrench className="w-4 h-4 text-violet-400" />
+              <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide">
+                Handle Missing Values
+              </h3>
+              <span className="text-xs text-zinc-500">
+                Choose a strategy per column
+              </span>
+            </div>
+          </div>
+
+          {/* Per-column strategy table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wide">
+                  <th className="text-left px-6 py-3">Column</th>
+                  <th className="text-left px-4 py-3">Type</th>
+                  <th className="text-right px-4 py-3">Missing</th>
+                  <th className="text-left px-6 py-3">Strategy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {missingCols.map((mc, i) => {
+                  const cp = column_profiles.find((p) => p.column === mc.column)
+                  const isNumeric = cp?.mean !== undefined
+                  const strat = strategies[mc.column] ?? defaultStrategy(mc, isNumeric)
+                  return (
+                    <tr
+                      key={mc.column}
+                      className={`border-b border-zinc-800/50 ${i % 2 === 0 ? "bg-zinc-900" : "bg-zinc-950/30"}`}
+                    >
+                      <td className="px-6 py-3 font-mono text-violet-300 font-medium whitespace-nowrap">
+                        {mc.column}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-500 text-xs whitespace-nowrap">
+                        {isNumeric ? "numeric" : "categorical"}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <span className="text-amber-400 font-mono text-xs">
+                          {mc.missing_count} ({mc.missing_pct}%)
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={strat}
+                            onChange={(e) =>
+                              setStrategies((s) => ({ ...s, [mc.column]: e.target.value }))
+                            }
+                            className="bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 text-xs px-2 py-1.5 focus:border-violet-500 focus:outline-none cursor-pointer"
+                          >
+                            {isNumeric && <option value="mean">Fill — Mean</option>}
+                            {isNumeric && <option value="median">Fill — Median</option>}
+                            <option value="mode">Fill — Mode (most frequent)</option>
+                            <option value="constant">Fill — Constant value</option>
+                            <option value="drop_rows">Drop rows with missing</option>
+                            <option value="drop_col">Drop entire column</option>
+                          </select>
+                          {strat === "constant" && (
+                            <input
+                              type="text"
+                              placeholder={isNumeric ? "0" : "unknown"}
+                              value={constants[mc.column] ?? ""}
+                              onChange={(e) =>
+                                setConstants((c) => ({ ...c, [mc.column]: e.target.value }))
+                              }
+                              className="bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 text-xs px-2 py-1.5 w-24 focus:border-violet-500 focus:outline-none"
+                            />
+                          )}
+                          {strat === "drop_col" && (
+                            <span className="text-xs text-red-400/70 italic">column will be removed</span>
+                          )}
+                          {strat === "drop_rows" && (
+                            <span className="text-xs text-amber-400/70 italic">affected rows will be dropped</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 border-t border-zinc-800 flex items-center justify-between gap-4">
+            <p className="text-xs text-zinc-500">
+              Strategies are applied to your session dataset before training.
+            </p>
+            <div className="flex items-center gap-3 shrink-0">
+              {applyError && (
+                <div className="flex items-center gap-1.5 text-red-400 text-xs">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {applyError}
+                </div>
+              )}
+              <button
+                onClick={handleApply}
+                disabled={applying}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {applying
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Wrench className="w-4 h-4" />
+                }
+                {applying ? "Applying…" : "Apply Strategies"}
+              </button>
+            </div>
           </div>
         </div>
       )}

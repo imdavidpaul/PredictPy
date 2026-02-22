@@ -250,6 +250,77 @@ async def upload_file(
     }
 
 
+# ---------------------------------------------------------------------------
+# Handle Missing Values
+# ---------------------------------------------------------------------------
+
+
+class HandleMissingRequest(BaseModel):
+    session_id: str
+    strategies: dict[str, str]  # column → "mean"|"median"|"mode"|"constant:VALUE"|"drop_rows"|"drop_col"
+
+
+@app.post("/handle-missing")
+def handle_missing(body: HandleMissingRequest) -> dict[str, Any]:
+    """
+    Apply per-column imputation / removal strategies to the session DataFrame.
+    Modifies the stored DataFrame in place and returns an updated dataset profile.
+    """
+    df = _get_df(body.session_id).copy()
+    rows_before = len(df)
+
+    # 1. Drop columns first (avoids operating on soon-to-be-removed columns)
+    drop_cols = [
+        col for col, strat in body.strategies.items()
+        if strat == "drop_col" and col in df.columns
+    ]
+    if drop_cols:
+        df = df.drop(columns=drop_cols)
+
+    # 2. Drop rows (union mask across all "drop_rows" columns still present)
+    drop_row_cols = [
+        col for col, strat in body.strategies.items()
+        if strat == "drop_rows" and col in df.columns
+    ]
+    if drop_row_cols:
+        mask = df[drop_row_cols].isna().any(axis=1)
+        df = df[~mask].reset_index(drop=True)
+
+    # 3. Fill strategies for remaining columns
+    for col, strat in body.strategies.items():
+        if col not in df.columns or strat in ("drop_col", "drop_rows"):
+            continue
+        series = df[col]
+        is_numeric = pd.api.types.is_numeric_dtype(series)
+
+        if strat == "mean":
+            if is_numeric:
+                df[col] = series.fillna(series.mean())
+        elif strat == "median":
+            if is_numeric:
+                df[col] = series.fillna(series.median())
+        elif strat == "mode":
+            mode_vals = series.mode(dropna=True)
+            if len(mode_vals) > 0:
+                df[col] = series.fillna(mode_vals.iloc[0])
+        elif strat.startswith("constant:"):
+            fill_val: Any = strat[len("constant:"):]
+            if is_numeric:
+                try:
+                    fill_val = float(fill_val)
+                except ValueError:
+                    pass
+            df[col] = series.fillna(fill_val)
+
+    _sessions[body.session_id] = df
+
+    return {
+        "profile": profile_dataset(df),
+        "rows_dropped": rows_before - len(df),
+        "cols_dropped": drop_cols,
+    }
+
+
 @app.post("/suggest-target")
 def suggest_target(
     body: SuggestTargetRequest,

@@ -65,6 +65,18 @@ export interface DatasetProfile {
 }
 
 // ---------------------------------------------------------------------------
+// Handle Missing Values
+// ---------------------------------------------------------------------------
+
+export type MissingStrategy = "mean" | "median" | "mode" | "constant" | "drop_rows" | "drop_col"
+
+export interface HandleMissingResponse {
+  profile: DatasetProfile
+  rows_dropped: number
+  cols_dropped: string[]
+}
+
+// ---------------------------------------------------------------------------
 // Upload Response
 // ---------------------------------------------------------------------------
 
