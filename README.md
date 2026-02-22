@@ -46,7 +46,6 @@ PredictPy is a code-free machine learning platform that automates the entire ML 
 | **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS, Recharts, Zustand |
 | **Backend** | FastAPI, Python 3.13, scikit-learn, SciPy, Statsmodels |
 | **ML Engines** | XGBoost, LightGBM, CatBoost, SHAP |
-| **DevOps** | Docker, Docker Compose, Makefile |
 
 ---
 
