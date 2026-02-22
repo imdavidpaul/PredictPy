@@ -72,7 +72,7 @@ const UPLOAD_FEATURES = [
 ]
 
 function Dashboard() {
-  const { currentStep, setStep, reset, filename, sessionId, modelResult } = useStore()
+  const { currentStep, setStep, reset, filename, sessionId, modelResult, error } = useStore()
   const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   const info = STEP_TITLES[currentStep]
@@ -149,6 +149,25 @@ function Dashboard() {
 
       {/* Main */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-10">
+        {/* Global Error Banner */}
+        {error && (
+          <div className="mb-6 flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="text-sm">
+              <p className="font-semibold">Something went wrong</p>
+              <p className="opacity-80">{error}</p>
+              {(error.includes("expired") || error.includes("not found")) && (
+                <button
+                  onClick={reset}
+                  className="mt-2 text-xs bg-red-500/20 hover:bg-red-500/30 px-3 py-1 rounded-md border border-red-500/30 transition-colors"
+                >
+                  Start New Session
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Step heading */}
         {currentStep !== "upload" && (
           <div className="mb-8">
@@ -159,15 +178,15 @@ function Dashboard() {
 
         {/* Step content */}
         {currentStep === "upload" && (
-          <div className="flex flex-col items-center justify-center py-10">
-            <div className="text-center mb-10 max-w-xl">
-              <div className="flex items-center justify-center mx-auto mb-6">
-                <PredictpyLogo size="lg" />
+          <div className="flex flex-col items-center justify-center py-0">
+            <div className="text-center mb-6 max-w-xl">
+              <div className="flex items-center justify-center mx-auto mb-4">
+                <PredictpyLogo size="md" />
               </div>
-              <h1 className="text-3xl font-bold text-zinc-100 mb-3 tracking-tight">
+              <h1 className="text-2xl font-bold text-zinc-100 mb-2 tracking-tight">
                 Intelligent Feature Selection
               </h1>
-              <p className="text-zinc-400 leading-relaxed text-sm sm:text-base">
+              <p className="text-zinc-400 leading-relaxed text-xs sm:text-sm">
                 Upload your dataset and our algorithm will automatically detect the problem type,
                 analyze missing values, suggest the target variable, and rank features by
                 correlation strength using multiple statistical methods.

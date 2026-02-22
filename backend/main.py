@@ -261,7 +261,7 @@ def auth_login(body: AuthRequest) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/upload")
-@limiter.limit("10/hour")
+@limiter.limit("100/hour")
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
